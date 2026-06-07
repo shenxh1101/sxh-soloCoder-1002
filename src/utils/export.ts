@@ -1,11 +1,13 @@
-import type { Topic, ScriptBlock, TimelineItem, Material } from '../types';
-import { SCRIPT_BLOCK_TYPES, TIMELINE_ITEM_TYPES } from '../types';
+import type { Topic, ScriptBlock, TimelineItem, Material, ChecklistItem } from '../types';
+import { SCRIPT_BLOCK_TYPES, TIMELINE_ITEM_TYPES, MATERIAL_TYPES } from '../types';
 
 export interface ExportOptions {
   includeScript: boolean;
   includeTimeline: boolean;
   includeMaterials: boolean;
   includeUnconfirmed: boolean;
+  includeTimelineMarkers: boolean;
+  includeChecklist: boolean;
 }
 
 const formatDuration = (minutes: number): string => {
@@ -22,11 +24,23 @@ const getTimelineTypeLabel = (type: string): string => {
   return TIMELINE_ITEM_TYPES.find(t => t.value === type)?.label || type;
 };
 
+const getMaterialTypeLabel = (type: string): string => {
+  return MATERIAL_TYPES.find(t => t.value === type)?.label || type;
+};
+
+const getMaterialTypeIcon = (type: string): string => {
+  return MATERIAL_TYPES.find(t => t.value === type)?.icon || '📎';
+};
+
 export const exportRecordingOutline = (
   topic: Topic,
   scriptBlocks: ScriptBlock[],
   timelineItems: TimelineItem[],
-  options: ExportOptions
+  materials: Material[],
+  checklistItems: ChecklistItem[],
+  options: ExportOptions,
+  titleFormat?: string,
+  footerText?: string
 ): string => {
   const blocks = scriptBlocks
     .filter(b => b.topicId === topic.id)
@@ -36,9 +50,21 @@ export const exportRecordingOutline = (
     .filter(t => t.topicId === topic.id)
     .sort((a, b) => a.startTime - b.startTime);
 
+  const topicMaterials = materials.filter(m => m.topicId === topic.id);
+  const filteredMaterials = options.includeUnconfirmed
+    ? topicMaterials
+    : topicMaterials.filter(m => m.confirmed);
+
+  const topicChecklist = checklistItems.filter(c => c.topicId === topic.id);
+  const filteredChecklist = options.includeUnconfirmed
+    ? topicChecklist
+    : topicChecklist.filter(c => c.completed);
+
   const totalDuration = items.reduce((sum, item) => sum + item.duration, 0);
 
-  let outline = `📻 录制提纲 - ${topic.title}\n`;
+  const title = titleFormat?.replace('{title}', topic.title) || `📻 录制提纲 - ${topic.title}`;
+
+  let outline = `${title}\n`;
   outline += `${'='.repeat(50)}\n\n`;
   outline += `📅 创建日期: ${new Date(topic.createdAt).toLocaleDateString('zh-CN')}\n`;
   outline += `👤 嘉宾: ${topic.guest || '无'}\n`;
@@ -60,9 +86,19 @@ export const exportRecordingOutline = (
     items.forEach((item, index) => {
       outline += `${index + 1}. [${formatDuration(item.startTime)} - ${formatDuration(item.startTime + item.duration)}] `;
       outline += `${getTimelineTypeLabel(item.type)}: ${item.title}`;
-      if (item.marker === 'music') outline += ' 🎵';
-      if (item.marker === 'voiceover') outline += ' 🎙️';
+      if (options.includeTimelineMarkers) {
+        if (item.marker === 'music') outline += ' 🎵';
+        if (item.marker === 'voiceover') outline += ' 🎙️';
+      }
       outline += ` (${formatDuration(item.duration)})\n`;
+      if (options.includeTimelineMarkers) {
+        if (item.assignee) {
+          outline += `   👤 负责人: ${item.assignee}\n`;
+        }
+        if (item.note) {
+          outline += `   📝 备注: ${item.note}\n`;
+        }
+      }
     });
     outline += '\n';
   }
@@ -79,7 +115,47 @@ export const exportRecordingOutline = (
     });
   }
 
-  if (!options.includeTimeline && !options.includeScript) {
+  if (options.includeMaterials && filteredMaterials.length > 0) {
+    outline += `${'='.repeat(50)}\n`;
+    outline += `📚 素材清单\n`;
+    outline += `${'='.repeat(50)}\n\n`;
+
+    filteredMaterials.forEach((material, index) => {
+      outline += `${index + 1}. ${getMaterialTypeIcon(material.type)} ${getMaterialTypeLabel(material.type)}: ${material.title}`;
+      if (!material.confirmed) outline += ' ⏳';
+      outline += '\n';
+      if (material.url) {
+        outline += `   🔗 ${material.url}\n`;
+      }
+      if (material.note) {
+        outline += `   📝 ${material.note}\n`;
+      }
+    });
+    outline += '\n';
+  }
+
+  if (options.includeChecklist && filteredChecklist.length > 0) {
+    outline += `${'='.repeat(50)}\n`;
+    outline += `✅ 准备检查清单\n`;
+    outline += `${'='.repeat(50)}\n\n`;
+
+    filteredChecklist.forEach((item, index) => {
+      outline += `${index + 1}. ${item.completed ? '[✓]' : '[ ]'} ${item.title}`;
+      if (!item.completed && !options.includeUnconfirmed) return;
+      outline += '\n';
+      if (item.description) {
+        outline += `   ${item.description}\n`;
+      }
+    });
+    outline += '\n';
+  }
+
+  if (footerText) {
+    outline += `${'='.repeat(50)}\n`;
+    outline += `${footerText}\n`;
+  }
+
+  if (!options.includeTimeline && !options.includeScript && !options.includeMaterials && !options.includeChecklist) {
     outline += '⚠️ 请在导出选项中选择要包含的内容\n';
   }
 
@@ -89,13 +165,29 @@ export const exportRecordingOutline = (
 export const exportGuestQuestions = (
   topic: Topic,
   scriptBlocks: ScriptBlock[],
-  options: ExportOptions
+  materials: Material[],
+  checklistItems: ChecklistItem[],
+  options: ExportOptions,
+  titleFormat?: string,
+  footerText?: string
 ): string => {
   const questionBlocks = scriptBlocks
     .filter(b => b.topicId === topic.id && b.type === 'question')
     .sort((a, b) => a.order - b.order);
 
-  let doc = `❓ 嘉宾问题单 - ${topic.title}\n`;
+  const topicMaterials = materials.filter(m => m.topicId === topic.id);
+  const filteredMaterials = options.includeUnconfirmed
+    ? topicMaterials
+    : topicMaterials.filter(m => m.confirmed);
+
+  const topicChecklist = checklistItems.filter(c => c.topicId === topic.id);
+  const filteredChecklist = options.includeUnconfirmed
+    ? topicChecklist
+    : topicChecklist.filter(c => c.completed);
+
+  const title = titleFormat?.replace('{title}', topic.title) || `❓ 嘉宾问题单 - ${topic.title}`;
+
+  let doc = `${title}\n`;
   doc += `${'='.repeat(50)}\n\n`;
   doc += `👤 嘉宾: ${topic.guest || '待确认'}\n`;
   doc += `📅 录制日期: ${new Date(topic.createdAt).toLocaleDateString('zh-CN')}\n\n`;
@@ -118,6 +210,39 @@ export const exportGuestQuestions = (
     });
   }
 
+  if (options.includeMaterials && filteredMaterials.length > 0) {
+    doc += `${'='.repeat(50)}\n`;
+    doc += `📚 参考资料\n`;
+    doc += `${'='.repeat(50)}\n\n`;
+
+    filteredMaterials.forEach((material, index) => {
+      doc += `${index + 1}. ${getMaterialTypeIcon(material.type)} ${material.title}`;
+      if (!material.confirmed) doc += ' ⏳';
+      doc += '\n';
+      if (material.url) {
+        doc += `   🔗 ${material.url}\n`;
+      }
+      if (material.note) {
+        doc += `   📝 ${material.note}\n`;
+      }
+    });
+    doc += '\n';
+  }
+
+  if (options.includeChecklist && filteredChecklist.length > 0) {
+    doc += `${'='.repeat(50)}\n`;
+    doc += `✅ 准备检查清单\n`;
+    doc += `${'='.repeat(50)}\n\n`;
+
+    filteredChecklist.forEach((item, index) => {
+      doc += `${index + 1}. ${item.completed ? '[✓]' : '[ ]'} ${item.title}\n`;
+      if (item.description) {
+        doc += `   ${item.description}\n`;
+      }
+    });
+    doc += '\n';
+  }
+
   doc += `${'='.repeat(50)}\n`;
   doc += `📌 注意事项\n`;
   doc += `${'='.repeat(50)}\n\n`;
@@ -125,6 +250,10 @@ export const exportGuestQuestions = (
   doc += `2. 录制前请确认设备正常\n`;
   doc += `3. 访谈过程中请保持自然流畅\n`;
   doc += `4. 如有补充问题可随时沟通\n`;
+
+  if (footerText) {
+    doc += `\n${footerText}\n`;
+  }
 
   if (options.includeScript && questionBlocks.length === 0) {
     doc += '\n⚠️ 暂无问题，请先在脚本编辑中添加问题模块。\n';
@@ -137,7 +266,9 @@ export const exportPublishDescription = (
   topic: Topic,
   scriptBlocks: ScriptBlock[],
   materials: Material[],
-  options: ExportOptions
+  options: ExportOptions,
+  titleFormat?: string,
+  footerText?: string
 ): string => {
   const openingBlock = scriptBlocks.find(b => b.topicId === topic.id && b.type === 'opening');
   const closingBlock = scriptBlocks.find(b => b.topicId === topic.id && b.type === 'closing');
@@ -146,7 +277,9 @@ export const exportPublishDescription = (
   const todos = materials.filter(m => m.topicId === topic.id && m.type === 'todo');
   const filteredTodos = options.includeUnconfirmed ? todos : todos.filter(t => t.confirmed);
 
-  let desc = `🎙️ ${topic.title}\n`;
+  const title = titleFormat?.replace('{title}', topic.title) || `🎙️ ${topic.title}`;
+
+  let desc = `${title}\n`;
   desc += `${'='.repeat(50)}\n\n`;
 
   if (options.includeScript && openingBlock?.content) {
@@ -192,6 +325,10 @@ export const exportPublishDescription = (
     desc += `\n💭 ${closingBlock.content}\n\n`;
   }
 
+  if (footerText) {
+    desc += `${footerText}\n\n`;
+  }
+
   desc += `🏷️  标签: ${topic.tags.map(t => '#' + t.replace(/\s+/g, '')).join(' ')}\n`;
 
   return desc;
@@ -217,4 +354,68 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
       return false;
     }
   }
+};
+
+export const generateChecklistItems = (
+  topic: Topic,
+  scriptBlocks: ScriptBlock[],
+  timelineItems: TimelineItem[],
+  materials: Material[]
+): { type: string; title: string; description: string }[] => {
+  const items: { type: string; title: string; description: string }[] = [];
+  const topicId = topic.id;
+
+  const emptyScripts = scriptBlocks.filter(b => b.topicId === topicId && !b.content.trim());
+  if (emptyScripts.length > 0) {
+    items.push({
+      type: 'empty-script',
+      title: `补全 ${emptyScripts.length} 个空脚本段落`,
+      description: emptyScripts.map(b => `• ${b.title}`).join('\n')
+    });
+  }
+
+  const unconfirmedMaterials = materials.filter(m => m.topicId === topicId && !m.confirmed);
+  if (unconfirmedMaterials.length > 0) {
+    items.push({
+      type: 'unconfirmed-material',
+      title: `确认 ${unconfirmedMaterials.length} 项待确认素材`,
+      description: unconfirmedMaterials.map(m => `• ${m.title}`).join('\n')
+    });
+  }
+
+  const totalDuration = timelineItems.filter(t => t.topicId === topicId).reduce((sum, t) => sum + t.duration, 0);
+  items.push({
+    type: 'timeline-duration',
+    title: `确认总时长: ${formatDuration(totalDuration)}`,
+    description: `时间轴共 ${timelineItems.filter(t => t.topicId === topicId).length} 个时段`
+  });
+
+  const adMarkers = timelineItems.filter(t => t.topicId === topicId && t.type === 'ad');
+  if (adMarkers.length > 0) {
+    items.push({
+      type: 'ad-marker',
+      title: `确认 ${adMarkers.length} 个广告时段`,
+      description: adMarkers.map(a => `• ${a.title} (${formatDuration(a.duration)})`).join('\n')
+    });
+  }
+
+  const musicMarkers = timelineItems.filter(t => t.topicId === topicId && t.marker === 'music');
+  if (musicMarkers.length > 0) {
+    items.push({
+      type: 'music-marker',
+      title: `确认 ${musicMarkers.length} 个音乐标记`,
+      description: musicMarkers.map(m => `• ${m.title}`).join('\n')
+    });
+  }
+
+  const voiceoverMarkers = timelineItems.filter(t => t.topicId === topicId && t.marker === 'voiceover');
+  if (voiceoverMarkers.length > 0) {
+    items.push({
+      type: 'voiceover-marker',
+      title: `确认 ${voiceoverMarkers.length} 个口播标记`,
+      description: voiceoverMarkers.map(v => `• ${v.title}`).join('\n')
+    });
+  }
+
+  return items;
 };

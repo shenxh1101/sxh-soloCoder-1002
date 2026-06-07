@@ -3,6 +3,8 @@ export type Priority = 'low' | 'medium' | 'high';
 export type ScriptBlockType = 'opening' | 'question' | 'ad' | 'closing';
 export type TimelineItemType = 'talk' | 'music' | 'ad';
 export type MaterialType = 'link' | 'reference' | 'todo';
+export type ExportType = 'outline' | 'questions' | 'description';
+export type ChecklistItemType = 'empty-script' | 'unconfirmed-material' | 'timeline-duration' | 'ad-marker' | 'music-marker' | 'voiceover-marker' | 'custom';
 
 export interface Topic {
   id: string;
@@ -33,6 +35,8 @@ export interface TimelineItem {
   type: TimelineItemType;
   marker?: 'music' | 'voiceover';
   startTime: number;
+  assignee?: string;
+  note?: string;
 }
 
 export interface Material {
@@ -45,11 +49,44 @@ export interface Material {
   confirmed: boolean;
 }
 
+export interface ExportTemplate {
+  id: string;
+  topicId: string;
+  name: string;
+  description: string;
+  exportType: ExportType;
+  options: ExportOptions;
+  titleFormat: string;
+  footerText: string;
+  createdAt: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  topicId: string;
+  type: ChecklistItemType;
+  title: string;
+  description: string;
+  completed: boolean;
+  createdAt: string;
+}
+
+export interface ExportOptions {
+  includeScript: boolean;
+  includeTimeline: boolean;
+  includeMaterials: boolean;
+  includeUnconfirmed: boolean;
+  includeTimelineMarkers: boolean;
+  includeChecklist: boolean;
+}
+
 export interface PodcastState {
   topics: Topic[];
   scriptBlocks: ScriptBlock[];
   timelineItems: TimelineItem[];
   materials: Material[];
+  exportTemplates: ExportTemplate[];
+  checklistItems: ChecklistItem[];
   activeTopicId: string | null;
 }
 
@@ -82,4 +119,31 @@ export const TOPIC_STATUS: { value: TopicStatus; label: string }[] = [
   { value: 'todo', label: '待开发' },
   { value: 'in-progress', label: '进行中' },
   { value: 'done', label: '已完成' },
+];
+
+export const EXPORT_TYPES: { value: ExportType; label: string }[] = [
+  { value: 'outline', label: '录制提纲' },
+  { value: 'questions', label: '嘉宾问题单' },
+  { value: 'description', label: '发布简介' },
+];
+
+export const TEMPLATE_PRESETS: { name: string; description: string; exportType: ExportType; options: Partial<ExportOptions> }[] = [
+  {
+    name: '访谈版',
+    description: '适合嘉宾访谈节目，包含完整问题和时间轴',
+    exportType: 'outline',
+    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: false }
+  },
+  {
+    name: '单口版',
+    description: '适合单人主播，侧重脚本和时间控制',
+    exportType: 'outline',
+    options: { includeScript: true, includeTimeline: true, includeMaterials: false, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true }
+  },
+  {
+    name: '商业合作版',
+    description: '适合品牌合作，突出广告时段和素材来源',
+    exportType: 'outline',
+    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true }
+  },
 ];

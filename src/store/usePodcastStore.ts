@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
-  Topic, ScriptBlock, TimelineItem, Material, TopicStatus, ScriptBlockType, Priority } from '../types';
-import { exportRecordingOutline, exportGuestQuestions, exportPublishDescription, type ExportOptions } from '../utils/export';
+  Topic, ScriptBlock, TimelineItem, Material, TopicStatus, ScriptBlockType, Priority,
+  ExportTemplate, ChecklistItem, ExportType, ChecklistItemType
+} from '../types';
+import { exportRecordingOutline, exportGuestQuestions, exportPublishDescription, type ExportOptions, generateChecklistItems } from '../utils/export';
 import type { MaterialType, TimelineItemType } from '../types';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -27,6 +29,8 @@ interface PodcastStore {
   scriptBlocks: ScriptBlock[];
   timelineItems: TimelineItem[];
   materials: Material[];
+  exportTemplates: ExportTemplate[];
+  checklistItems: ChecklistItem[];
   activeTopicId: string | null;
 
   addTopic: (topic: Omit<Topic, 'id' | 'createdAt'>) => void;
@@ -51,11 +55,24 @@ interface PodcastStore {
   deleteMaterial: (id: string) => void;
   toggleMaterialConfirmed: (id: string) => void;
 
+  addExportTemplate: (template: Omit<ExportTemplate, 'id' | 'createdAt'>) => void;
+  updateExportTemplate: (id: string, updates: Partial<ExportTemplate>) => void;
+  deleteExportTemplate: (id: string) => void;
+  getExportTemplatesForTopic: (topicId: string) => ExportTemplate[];
+  applyExportTemplate: (templateId: string) => { options: ExportOptions; titleFormat: string; footerText: string } | null;
+
+  addChecklistItem: (item: Omit<ChecklistItem, 'id' | 'createdAt'>) => void;
+  updateChecklistItem: (id: string, updates: Partial<ChecklistItem>) => void;
+  deleteChecklistItem: (id: string) => void;
+  toggleChecklistCompleted: (id: string) => void;
+  regenerateChecklist: (topicId: string) => void;
+  getChecklistForTopic: (topicId: string) => ChecklistItem[];
+
   getActiveTopic: () => Topic | undefined;
 
-  exportRecordingOutline: (options?: ExportOptions) => string;
-  exportGuestQuestions: (options?: ExportOptions) => string;
-  exportPublishDescription: (options?: ExportOptions) => string;
+  exportRecordingOutline: (options?: ExportOptions, titleFormat?: string, footerText?: string) => string;
+  exportGuestQuestions: (options?: ExportOptions, titleFormat?: string, footerText?: string) => string;
+  exportPublishDescription: (options?: ExportOptions, titleFormat?: string, footerText?: string) => string;
 }
 
 export const usePodcastStore = create<PodcastStore>()(
@@ -110,17 +127,56 @@ export const usePodcastStore = create<PodcastStore>()(
         },
       ],
       timelineItems: [
-        { id: generateId(), topicId: initialTopicId, title: '开场音乐', duration: 0.5, type: 'music' as TimelineItemType, marker: 'music', startTime: 0 },
-        { id: generateId(), topicId: initialTopicId, title: '开场白', duration: 2, type: 'talk' as TimelineItemType, marker: 'voiceover', startTime: 0.5 },
-        { id: generateId(), topicId: initialTopicId, title: '主题讨论', duration: 25, type: 'talk' as TimelineItemType, startTime: 2.5 },
-        { id: generateId(), topicId: initialTopicId, title: '广告时段', duration: 1, type: 'ad' as TimelineItemType, startTime: 27.5 },
-        { id: generateId(), topicId: initialTopicId, title: '结尾音乐', duration: 0.5, type: 'music' as TimelineItemType, marker: 'music', startTime: 28.5 },
+        { id: generateId(), topicId: initialTopicId, title: '开场音乐', duration: 0.5, type: 'music' as TimelineItemType, marker: 'music', startTime: 0, assignee: '音频编辑', note: '使用节目主题曲' },
+        { id: generateId(), topicId: initialTopicId, title: '开场白', duration: 2, type: 'talk' as TimelineItemType, marker: 'voiceover', startTime: 0.5, assignee: '主播', note: '热情介绍本期主题' },
+        { id: generateId(), topicId: initialTopicId, title: '主题讨论', duration: 25, type: 'talk' as TimelineItemType, startTime: 2.5, assignee: '主播&嘉宾', note: '围绕3个核心问题展开' },
+        { id: generateId(), topicId: initialTopicId, title: '广告时段', duration: 1, type: 'ad' as TimelineItemType, startTime: 27.5, assignee: '运营', note: '品牌A口播广告' },
+        { id: generateId(), topicId: initialTopicId, title: '结尾音乐', duration: 0.5, type: 'music' as TimelineItemType, marker: 'music', startTime: 28.5, assignee: '音频编辑', note: '渐弱收尾' },
       ],
       materials: [
         { id: generateId(), topicId: initialTopicId, type: 'link' as MaterialType, title: 'ChatGPT官网', url: 'https://chat.openai.com', note: '演示用', confirmed: true },
         { id: generateId(), topicId: initialTopicId, type: 'reference' as MaterialType, title: '2024年AI发展报告', url: '', note: '需要引用数据', confirmed: false },
         { id: generateId(), topicId: initialTopicId, type: 'todo' as MaterialType, title: '确认嘉宾时间', url: '', note: '下周一下午2点', confirmed: false },
       ],
+      exportTemplates: [
+        {
+          id: generateId(),
+          topicId: initialTopicId,
+          name: '访谈版',
+          description: '适合嘉宾访谈节目',
+          exportType: 'outline' as ExportType,
+          options: {
+            includeScript: true,
+            includeTimeline: true,
+            includeMaterials: true,
+            includeUnconfirmed: false,
+            includeTimelineMarkers: true,
+            includeChecklist: false,
+          },
+          titleFormat: '📻 录制提纲 - {title}',
+          footerText: '--- 由播客规划工具生成 ---',
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: generateId(),
+          topicId: initialTopicId,
+          name: '单口版',
+          description: '适合单人主播节目',
+          exportType: 'outline' as ExportType,
+          options: {
+            includeScript: true,
+            includeTimeline: true,
+            includeMaterials: false,
+            includeUnconfirmed: false,
+            includeTimelineMarkers: true,
+            includeChecklist: true,
+          },
+          titleFormat: '🎙️ 主播录制指南 - {title}',
+          footerText: '--- 祝录制顺利！---',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      checklistItems: [],
       activeTopicId: initialTopicId,
 
       addTopic: (topic) =>
@@ -144,6 +200,8 @@ export const usePodcastStore = create<PodcastStore>()(
           scriptBlocks: state.scriptBlocks.filter((b) => b.topicId !== id),
           timelineItems: state.timelineItems.filter((i) => i.topicId !== id),
           materials: state.materials.filter((m) => m.topicId !== id),
+          exportTemplates: state.exportTemplates.filter((t) => t.topicId !== id),
+          checklistItems: state.checklistItems.filter((c) => c.topicId !== id),
           activeTopicId: state.activeTopicId === id ? null : state.activeTopicId,
         })),
 
@@ -341,13 +399,107 @@ export const usePodcastStore = create<PodcastStore>()(
           ),
         })),
 
+      addExportTemplate: (template) =>
+        set((state) => ({
+          exportTemplates: [
+            ...state.exportTemplates,
+            { ...template, id: generateId(), createdAt: new Date().toISOString() },
+          ],
+        })),
+
+      updateExportTemplate: (id, updates) =>
+        set((state) => ({
+          exportTemplates: state.exportTemplates.map((t) =>
+            t.id === id ? { ...t, ...updates } : t
+          ),
+        })),
+
+      deleteExportTemplate: (id) =>
+        set((state) => ({
+          exportTemplates: state.exportTemplates.filter((t) => t.id !== id),
+        })),
+
+      getExportTemplatesForTopic: (topicId) => {
+        const state = get();
+        return state.exportTemplates.filter((t) => t.topicId === topicId);
+      },
+
+      applyExportTemplate: (templateId) => {
+        const state = get();
+        const template = state.exportTemplates.find((t) => t.id === templateId);
+        if (!template) return null;
+        return {
+          options: template.options,
+          titleFormat: template.titleFormat,
+          footerText: template.footerText,
+        };
+      },
+
+      addChecklistItem: (item) =>
+        set((state) => ({
+          checklistItems: [
+            ...state.checklistItems,
+            { ...item, id: generateId(), createdAt: new Date().toISOString() },
+          ],
+        })),
+
+      updateChecklistItem: (id, updates) =>
+        set((state) => ({
+          checklistItems: state.checklistItems.map((c) =>
+            c.id === id ? { ...c, ...updates } : c
+          ),
+        })),
+
+      deleteChecklistItem: (id) =>
+        set((state) => ({
+          checklistItems: state.checklistItems.filter((c) => c.id !== id),
+        })),
+
+      toggleChecklistCompleted: (id) =>
+        set((state) => ({
+          checklistItems: state.checklistItems.map((c) =>
+            c.id === id ? { ...c, completed: !c.completed } : c
+          ),
+        })),
+
+      regenerateChecklist: (topicId) => {
+        const state = get();
+        const topic = state.topics.find((t) => t.id === topicId);
+        if (!topic) return;
+
+        const items = generateChecklistItems(
+          topic,
+          state.scriptBlocks,
+          state.timelineItems,
+          state.materials
+        );
+
+        const existingItems = state.checklistItems.filter((c) => c.topicId === topicId && c.type === 'custom');
+        const newItems: ChecklistItem[] = items.map((item) => ({
+          id: generateId(),
+          topicId,
+          type: item.type as ChecklistItemType,
+          title: item.title,
+          description: item.description,
+          completed: false,
+          createdAt: new Date().toISOString(),
+        }));
+
+        set({ checklistItems: [...existingItems, ...newItems] });
+      },
+
+      getChecklistForTopic: (topicId) => {
+        const state = get();
+        return state.checklistItems.filter((c) => c.topicId === topicId);
+      },
+
       getActiveTopic: () => {
         const state = get();
         if (!state.activeTopicId) return undefined;
         return state.topics.find((t) => t.id === state.activeTopicId);
       },
 
-      exportRecordingOutline: (options) => {
+      exportRecordingOutline: (options, titleFormat, footerText) => {
         const state = get();
         const topic = state.getActiveTopic();
         if (!topic) return '请先选择一个选题';
@@ -356,11 +508,22 @@ export const usePodcastStore = create<PodcastStore>()(
           includeTimeline: true,
           includeMaterials: true,
           includeUnconfirmed: false,
+          includeTimelineMarkers: true,
+          includeChecklist: false,
         };
-        return exportRecordingOutline(topic, state.scriptBlocks, state.timelineItems, options || defaultOptions);
+        return exportRecordingOutline(
+          topic,
+          state.scriptBlocks,
+          state.timelineItems,
+          state.materials,
+          state.checklistItems,
+          options || defaultOptions,
+          titleFormat,
+          footerText
+        );
       },
 
-      exportGuestQuestions: (options) => {
+      exportGuestQuestions: (options, titleFormat, footerText) => {
         const state = get();
         const topic = state.getActiveTopic();
         if (!topic) return '请先选择一个选题';
@@ -369,11 +532,21 @@ export const usePodcastStore = create<PodcastStore>()(
           includeTimeline: true,
           includeMaterials: true,
           includeUnconfirmed: false,
+          includeTimelineMarkers: true,
+          includeChecklist: false,
         };
-        return exportGuestQuestions(topic, state.scriptBlocks, options || defaultOptions);
+        return exportGuestQuestions(
+          topic,
+          state.scriptBlocks,
+          state.materials,
+          state.checklistItems,
+          options || defaultOptions,
+          titleFormat,
+          footerText
+        );
       },
 
-      exportPublishDescription: (options) => {
+      exportPublishDescription: (options, titleFormat, footerText) => {
         const state = get();
         const topic = state.getActiveTopic();
         if (!topic) return '请先选择一个选题';
@@ -382,8 +555,17 @@ export const usePodcastStore = create<PodcastStore>()(
           includeTimeline: true,
           includeMaterials: true,
           includeUnconfirmed: false,
+          includeTimelineMarkers: true,
+          includeChecklist: false,
         };
-        return exportPublishDescription(topic, state.scriptBlocks, state.materials, options || defaultOptions);
+        return exportPublishDescription(
+          topic,
+          state.scriptBlocks,
+          state.materials,
+          options || defaultOptions,
+          titleFormat,
+          footerText
+        );
       },
     }),
     {

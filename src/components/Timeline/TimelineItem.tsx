@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { GripVertical, Trash2, Music, Mic, Edit3, Check, X, Plus } from 'lucide-react';
+import { GripVertical, Trash2, Music, Mic, Edit3, Check, X, Plus, User, FileText } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { Textarea } from '../ui/Textarea';
 import { usePodcastStore } from '@/store/usePodcastStore';
 import type { TimelineItem as TimelineItemType, TimelineItemType as ItemType } from '@/types';
 import { TIMELINE_ITEM_TYPES } from '@/types';
@@ -38,6 +39,8 @@ export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLa
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(item.title);
   const [editDuration, setEditDuration] = useState(item.duration.toString());
+  const [editAssignee, setEditAssignee] = useState(item.assignee || '');
+  const [editNote, setEditNote] = useState(item.note || '');
 
   const typeConfig = TIMELINE_ITEM_TYPES.find((t) => t.value === item.type);
   const widthPercent = totalDuration > 0 ? (item.duration / totalDuration) * 100 : 0;
@@ -54,6 +57,8 @@ export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLa
       updateTimelineItem(item.id, {
         title: editTitle.trim() || item.title,
         duration,
+        assignee: editAssignee.trim() || undefined,
+        note: editNote.trim() || undefined,
       });
     }
     setIsEditing(false);
@@ -62,6 +67,8 @@ export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLa
   const handleCancel = () => {
     setEditTitle(item.title);
     setEditDuration(item.duration.toString());
+    setEditAssignee(item.assignee || '');
+    setEditNote(item.note || '');
     setIsEditing(false);
   };
 
@@ -86,7 +93,7 @@ export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLa
         style={style}
         className="bg-slate-700/80 rounded-lg p-3 border-2 border-amber-500/50"
       >
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Input
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
@@ -94,21 +101,46 @@ export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLa
             inputSize="sm"
             autoFocus
           />
-          <div className="flex gap-2">
-            <Input
-              value={editDuration}
-              onChange={(e) => setEditDuration(e.target.value)}
-              placeholder="时长(分钟)"
-              inputSize="sm"
-              type="number"
-              step="0.5"
-              min="0.1"
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">时长(分钟)</label>
+              <Input
+                value={editDuration}
+                onChange={(e) => setEditDuration(e.target.value)}
+                placeholder="时长"
+                inputSize="sm"
+                type="number"
+                step="0.5"
+                min="0.1"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">负责人</label>
+              <Input
+                value={editAssignee}
+                onChange={(e) => setEditAssignee(e.target.value)}
+                placeholder="负责人"
+                inputSize="sm"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">备注</label>
+            <Textarea
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="备注信息"
+              rows={2}
             />
+          </div>
+          <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={handleCancel}>
-              <X size={14} />
+              <X size={14} className="mr-1" />
+              取消
             </Button>
             <Button size="sm" onClick={handleSave}>
-              <Check size={14} />
+              <Check size={14} className="mr-1" />
+              保存
             </Button>
           </div>
         </div>
@@ -218,8 +250,8 @@ export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLa
           </div>
         </div>
 
-        {item.marker && (
-          <div className="mt-2 flex items-center gap-2 text-xs">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          {item.marker && (
             <span
               className={cn(
                 'px-2 py-0.5 rounded-full',
@@ -230,6 +262,19 @@ export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLa
             >
               {item.marker === 'music' ? '🎵 音乐' : '🎙️ 口播'} 标记
             </span>
+          )}
+          {item.assignee && (
+            <span className="px-2 py-0.5 rounded-full bg-indigo-900/50 text-indigo-300 flex items-center gap-1">
+              <User size={10} />
+              {item.assignee}
+            </span>
+          )}
+        </div>
+
+        {item.note && (
+          <div className="mt-2 flex items-start gap-1.5 text-xs text-slate-400">
+            <FileText size={12} className="mt-0.5 flex-shrink-0" />
+            <span className="line-clamp-2">{item.note}</span>
           </div>
         )}
       </div>
