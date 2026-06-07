@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
   Topic, ScriptBlock, TimelineItem, Material, TopicStatus, ScriptBlockType, Priority,
-  ExportTemplate, ChecklistItem, ExportType, ChecklistItemType
+  ExportTemplate, ChecklistItem, ExportType, ChecklistItemType,
+  RehearsalRecord, PublishVersion, RehearsalIssue, PublishPlatform
 } from '../types';
 import { exportRecordingOutline, exportGuestQuestions, exportPublishDescription, type ExportOptions, generateChecklistItems } from '../utils/export';
 import type { MaterialType, TimelineItemType } from '../types';
@@ -31,6 +32,8 @@ interface PodcastStore {
   materials: Material[];
   exportTemplates: ExportTemplate[];
   checklistItems: ChecklistItem[];
+  rehearsalRecords: RehearsalRecord[];
+  publishVersions: PublishVersion[];
   activeTopicId: string | null;
 
   addTopic: (topic: Omit<Topic, 'id' | 'createdAt'>) => void;
@@ -59,7 +62,7 @@ interface PodcastStore {
   updateExportTemplate: (id: string, updates: Partial<ExportTemplate>) => void;
   deleteExportTemplate: (id: string) => void;
   getExportTemplatesForTopic: (topicId: string) => ExportTemplate[];
-  applyExportTemplate: (templateId: string) => { options: ExportOptions; titleFormat: string; footerText: string } | null;
+  applyExportTemplate: (templateId: string) => { options: ExportOptions; titleFormat: string; footerText: string; exportType: ExportType } | null;
 
   addChecklistItem: (item: Omit<ChecklistItem, 'id' | 'createdAt'>) => void;
   updateChecklistItem: (id: string, updates: Partial<ChecklistItem>) => void;
@@ -67,6 +70,20 @@ interface PodcastStore {
   toggleChecklistCompleted: (id: string) => void;
   regenerateChecklist: (topicId: string) => void;
   getChecklistForTopic: (topicId: string) => ChecklistItem[];
+
+  addRehearsalRecord: (record: Omit<RehearsalRecord, 'id' | 'createdAt'>) => void;
+  updateRehearsalRecord: (id: string, updates: Partial<RehearsalRecord>) => void;
+  deleteRehearsalRecord: (id: string) => void;
+  getRehearsalRecordsForTopic: (topicId: string) => RehearsalRecord[];
+  getLatestRehearsalRecord: (topicId: string) => RehearsalRecord | undefined;
+  addRehearsalIssue: (recordId: string, issue: Omit<RehearsalIssue, 'id'>) => void;
+  updateRehearsalIssue: (recordId: string, issueId: string, updates: Partial<RehearsalIssue>) => void;
+  toggleRehearsalIssueResolved: (recordId: string, issueId: string) => void;
+
+  addPublishVersion: (version: Omit<PublishVersion, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updatePublishVersion: (id: string, updates: Partial<PublishVersion>) => void;
+  deletePublishVersion: (id: string) => void;
+  getPublishVersionsForTopic: (topicId: string) => PublishVersion[];
 
   getActiveTopic: () => Topic | undefined;
 
@@ -152,6 +169,7 @@ export const usePodcastStore = create<PodcastStore>()(
             includeUnconfirmed: false,
             includeTimelineMarkers: true,
             includeChecklist: false,
+            includeRehearsalNotes: false,
           },
           titleFormat: '📻 录制提纲 - {title}',
           footerText: '--- 由播客规划工具生成 ---',
@@ -170,6 +188,7 @@ export const usePodcastStore = create<PodcastStore>()(
             includeUnconfirmed: false,
             includeTimelineMarkers: true,
             includeChecklist: true,
+            includeRehearsalNotes: true,
           },
           titleFormat: '🎙️ 主播录制指南 - {title}',
           footerText: '--- 祝录制顺利！---',
@@ -177,6 +196,8 @@ export const usePodcastStore = create<PodcastStore>()(
         },
       ],
       checklistItems: [],
+      rehearsalRecords: [],
+      publishVersions: [],
       activeTopicId: initialTopicId,
 
       addTopic: (topic) =>
@@ -202,6 +223,8 @@ export const usePodcastStore = create<PodcastStore>()(
           materials: state.materials.filter((m) => m.topicId !== id),
           exportTemplates: state.exportTemplates.filter((t) => t.topicId !== id),
           checklistItems: state.checklistItems.filter((c) => c.topicId !== id),
+          rehearsalRecords: state.rehearsalRecords.filter((r) => r.topicId !== id),
+          publishVersions: state.publishVersions.filter((p) => p.topicId !== id),
           activeTopicId: state.activeTopicId === id ? null : state.activeTopicId,
         })),
 
@@ -432,6 +455,7 @@ export const usePodcastStore = create<PodcastStore>()(
           options: template.options,
           titleFormat: template.titleFormat,
           footerText: template.footerText,
+          exportType: template.exportType,
         };
       },
 
@@ -474,23 +498,142 @@ export const usePodcastStore = create<PodcastStore>()(
           state.materials
         );
 
-        const existingItems = state.checklistItems.filter((c) => c.topicId === topicId && c.type === 'custom');
-        const newItems: ChecklistItem[] = items.map((item) => ({
-          id: generateId(),
-          topicId,
-          type: item.type as ChecklistItemType,
-          title: item.title,
-          description: item.description,
-          completed: false,
-          createdAt: new Date().toISOString(),
-        }));
+        const otherTopicItems = state.checklistItems.filter((c) => c.topicId !== topicId);
+        const existingCustomItems = state.checklistItems.filter((c) => c.topicId === topicId && c.type === 'custom');
 
-        set({ checklistItems: [...existingItems, ...newItems] });
+        const existingTypes = state.checklistItems
+          .filter((c) => c.topicId === topicId && c.type !== 'custom')
+          .map((c) => c.type);
+
+        const newItems: ChecklistItem[] = items
+          .filter((item) => !existingTypes.includes(item.type as ChecklistItemType))
+          .map((item) => ({
+            id: generateId(),
+            topicId,
+            type: item.type as ChecklistItemType,
+            title: item.title,
+            description: item.description,
+            completed: false,
+            createdAt: new Date().toISOString(),
+          }));
+
+        const existingAutoItems = state.checklistItems
+          .filter((c) => c.topicId === topicId && c.type !== 'custom');
+
+        set({
+          checklistItems: [...otherTopicItems, ...existingAutoItems, ...existingCustomItems, ...newItems]
+        });
       },
 
       getChecklistForTopic: (topicId) => {
         const state = get();
         return state.checklistItems.filter((c) => c.topicId === topicId);
+      },
+
+      addRehearsalRecord: (record) =>
+        set((state) => ({
+          rehearsalRecords: [
+            ...state.rehearsalRecords,
+            { ...record, id: generateId(), createdAt: new Date().toISOString() },
+          ],
+        })),
+
+      updateRehearsalRecord: (id, updates) =>
+        set((state) => ({
+          rehearsalRecords: state.rehearsalRecords.map((r) =>
+            r.id === id ? { ...r, ...updates } : r
+          ),
+        })),
+
+      deleteRehearsalRecord: (id) =>
+        set((state) => ({
+          rehearsalRecords: state.rehearsalRecords.filter((r) => r.id !== id),
+        })),
+
+      getRehearsalRecordsForTopic: (topicId) => {
+        const state = get();
+        return state.rehearsalRecords
+          .filter((r) => r.topicId === topicId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      },
+
+      getLatestRehearsalRecord: (topicId) => {
+        const state = get();
+        const records = state.rehearsalRecords
+          .filter((r) => r.topicId === topicId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        return records[0];
+      },
+
+      addRehearsalIssue: (recordId, issue) =>
+        set((state) => ({
+          rehearsalRecords: state.rehearsalRecords.map((r) =>
+            r.id === recordId
+              ? { ...r, issues: [...r.issues, { ...issue, id: generateId() }] }
+              : r
+          ),
+        })),
+
+      updateRehearsalIssue: (recordId, issueId, updates) =>
+        set((state) => ({
+          rehearsalRecords: state.rehearsalRecords.map((r) =>
+            r.id === recordId
+              ? {
+                  ...r,
+                  issues: r.issues.map((i) =>
+                    i.id === issueId ? { ...i, ...updates } : i
+                  ),
+                }
+              : r
+          ),
+        })),
+
+      toggleRehearsalIssueResolved: (recordId, issueId) =>
+        set((state) => ({
+          rehearsalRecords: state.rehearsalRecords.map((r) =>
+            r.id === recordId
+              ? {
+                  ...r,
+                  issues: r.issues.map((i) =>
+                    i.id === issueId ? { ...i, resolved: !i.resolved } : i
+                  ),
+                }
+              : r
+          ),
+        })),
+
+      addPublishVersion: (version) =>
+        set((state) => ({
+          publishVersions: [
+            ...state.publishVersions,
+            {
+              ...version,
+              id: generateId(),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        })),
+
+      updatePublishVersion: (id, updates) =>
+        set((state) => ({
+          publishVersions: state.publishVersions.map((p) =>
+            p.id === id
+              ? { ...p, ...updates, updatedAt: new Date().toISOString() }
+              : p
+          ),
+        })),
+
+      deletePublishVersion: (id) =>
+        set((state) => ({
+          publishVersions: state.publishVersions.filter((p) => p.id !== id),
+        })),
+
+      getPublishVersionsForTopic: (topicId) => {
+        const state = get();
+        return state.publishVersions
+          .filter((p) => p.topicId === topicId)
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       },
 
       getActiveTopic: () => {
@@ -510,7 +653,11 @@ export const usePodcastStore = create<PodcastStore>()(
           includeUnconfirmed: false,
           includeTimelineMarkers: true,
           includeChecklist: false,
+          includeRehearsalNotes: false,
         };
+        const rehearsalRecord = options?.includeRehearsalNotes
+          ? state.getLatestRehearsalRecord(topic.id)
+          : undefined;
         return exportRecordingOutline(
           topic,
           state.scriptBlocks,
@@ -519,7 +666,8 @@ export const usePodcastStore = create<PodcastStore>()(
           state.checklistItems,
           options || defaultOptions,
           titleFormat,
-          footerText
+          footerText,
+          rehearsalRecord
         );
       },
 
@@ -534,6 +682,7 @@ export const usePodcastStore = create<PodcastStore>()(
           includeUnconfirmed: false,
           includeTimelineMarkers: true,
           includeChecklist: false,
+          includeRehearsalNotes: false,
         };
         return exportGuestQuestions(
           topic,
@@ -557,10 +706,12 @@ export const usePodcastStore = create<PodcastStore>()(
           includeUnconfirmed: false,
           includeTimelineMarkers: true,
           includeChecklist: false,
+          includeRehearsalNotes: false,
         };
         return exportPublishDescription(
           topic,
           state.scriptBlocks,
+          state.timelineItems,
           state.materials,
           options || defaultOptions,
           titleFormat,

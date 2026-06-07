@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { Radio, LayoutGrid, AlignLeft, Clock, BookOpen, Download, Menu, X, CheckSquare } from 'lucide-react';
+import { Radio, LayoutGrid, AlignLeft, Clock, BookOpen, Download, Menu, X, CheckSquare, Target, Rocket } from 'lucide-react';
 import { TopicBoard } from '@/components/TopicBoard';
 import { ScriptEditor } from '@/components/ScriptEditor';
 import { Timeline } from '@/components/Timeline';
 import { MaterialList } from '@/components/MaterialList';
 import { PreparationChecklist } from '@/components/PreparationChecklist';
+import { RehearsalRecords } from '@/components/RehearsalRecords';
+import { PublishVersions } from '@/components/PublishVersions';
 import { ExportPanel } from '@/components/ExportPanel';
 import { usePodcastStore } from '@/store/usePodcastStore';
 import { cn } from '@/lib/utils';
 
-type TabType = 'topics' | 'script' | 'timeline' | 'materials' | 'checklist' | 'export';
+type TabType = 'topics' | 'script' | 'timeline' | 'materials' | 'checklist' | 'rehearsal' | 'publish' | 'export';
 
 const tabs = [
   { id: 'topics' as TabType, label: '选题板', icon: <LayoutGrid size={18} /> },
@@ -17,6 +19,8 @@ const tabs = [
   { id: 'timeline' as TabType, label: '时间轴', icon: <Clock size={18} /> },
   { id: 'materials' as TabType, label: '素材清单', icon: <BookOpen size={18} /> },
   { id: 'checklist' as TabType, label: '准备检查', icon: <CheckSquare size={18} /> },
+  { id: 'rehearsal' as TabType, label: '排练记录', icon: <Target size={18} /> },
+  { id: 'publish' as TabType, label: '发布交付', icon: <Rocket size={18} /> },
   { id: 'export' as TabType, label: '导出区', icon: <Download size={18} /> },
 ];
 
@@ -37,6 +41,10 @@ export default function Home() {
         return <MaterialList />;
       case 'checklist':
         return <PreparationChecklist />;
+      case 'rehearsal':
+        return <RehearsalRecords />;
+      case 'publish':
+        return <PublishVersions />;
       case 'export':
         return <ExportPanel />;
       default:

@@ -31,6 +31,8 @@ export function Timeline() {
   const deleteTimelineItem = usePodcastStore((state) => state.deleteTimelineItem);
   const recalculateTimeline = usePodcastStore((state) => state.recalculateTimeline);
   const insertTimelineItem = usePodcastStore((state) => state.insertTimelineItem);
+  const getRehearsalRecordsForTopic = usePodcastStore((state) => state.getRehearsalRecordsForTopic);
+  const addRehearsalIssue = usePodcastStore((state) => state.addRehearsalIssue);
   const activeTopicId = usePodcastStore((state) => state.activeTopicId);
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -127,6 +129,31 @@ export function Timeline() {
     setNewTitle('');
     setNewDuration('5');
     setNewType('talk');
+  };
+
+  const handleAddRehearsalIssue = (item: TimelineItemTypeDef) => {
+    if (!activeTopicId) return;
+
+    const records = getRehearsalRecordsForTopic(activeTopicId);
+    if (records.length === 0) {
+      alert('请先在「排练记录」中创建一条排练记录，然后再添加问题');
+      return;
+    }
+
+    const latestRecord = records[0];
+    const description = prompt(`请输入「${item.title}」的排练问题：`);
+    if (!description || !description.trim()) return;
+
+    addRehearsalIssue(latestRecord.id, {
+      type: 'content',
+      timelineItemId: item.id,
+      timelineItemTitle: item.title,
+      timePoint: item.startTime * 60,
+      description: description.trim(),
+      resolved: false,
+    });
+
+    alert('已添加到最新的排练记录中');
   };
 
   const getTypeIcon = (type: TimelineItemType) => {
@@ -310,6 +337,7 @@ export function Timeline() {
                           item={item}
                           totalDuration={totalDuration}
                           onInsertAfter={() => handleInsertAfter(item.id)}
+                          onAddRehearsalIssue={handleAddRehearsalIssue}
                           isFirst={index === 0}
                           isLast={index === filteredItems.length - 1}
                         />
@@ -327,6 +355,7 @@ export function Timeline() {
                         item={activeItem}
                         totalDuration={totalDuration}
                         onInsertAfter={() => {}}
+                        onAddRehearsalIssue={() => {}}
                         isFirst={false}
                         isLast={false}
                       />

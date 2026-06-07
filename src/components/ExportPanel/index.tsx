@@ -139,9 +139,6 @@ export function ExportPanel() {
     updateExportTemplate(editingTemplateId, {
       name: editTemplateName.trim(),
       description: editTemplateDesc.trim(),
-      options,
-      titleFormat,
-      footerText,
     });
     setEditingTemplateId(null);
   };
@@ -210,6 +207,7 @@ export function ExportPanel() {
     { key: 'includeUnconfirmed' as const, label: '包含待确认事项', description: '显示未确认的待办和素材' },
     { key: 'includeTimelineMarkers' as const, label: '包含时间轴标记', description: '显示负责人、备注、音乐/口播标记' },
     { key: 'includeChecklist' as const, label: '包含检查清单', description: '显示准备检查清单内容' },
+    { key: 'includeRehearsalNotes' as const, label: '包含排练记录', description: '显示最近一次排练记录和问题' },
   ];
 
   return (
@@ -577,7 +575,7 @@ export function ExportPanel() {
                                 {template.options.includeChecklist && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">检查清单</span>}
                               </div>
                             </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-1">
                               <Button
                                 size="sm"
                                 variant="ghost"

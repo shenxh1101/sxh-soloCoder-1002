@@ -5,6 +5,8 @@ export type TimelineItemType = 'talk' | 'music' | 'ad';
 export type MaterialType = 'link' | 'reference' | 'todo';
 export type ExportType = 'outline' | 'questions' | 'description';
 export type ChecklistItemType = 'empty-script' | 'unconfirmed-material' | 'timeline-duration' | 'ad-marker' | 'music-marker' | 'voiceover-marker' | 'custom';
+export type PublishPlatform = 'xiaoyuzhou' | 'apple' | 'wechat' | 'spotify' | 'bilibili' | 'youtube' | 'custom';
+export type RehearsalIssueType = 'timing' | 'content' | 'flow' | 'technical' | 'other';
 
 export interface Topic {
   id: string;
@@ -71,6 +73,42 @@ export interface ChecklistItem {
   createdAt: string;
 }
 
+export interface RehearsalRecord {
+  id: string;
+  topicId: string;
+  date: string;
+  participants: string;
+  actualDuration: number;
+  issues: RehearsalIssue[];
+  notes: string;
+  createdAt: string;
+}
+
+export interface RehearsalIssue {
+  id: string;
+  type: RehearsalIssueType;
+  timelineItemId?: string;
+  timelineItemTitle?: string;
+  timePoint?: number;
+  description: string;
+  resolved: boolean;
+}
+
+export interface PublishVersion {
+  id: string;
+  topicId: string;
+  platform: PublishPlatform;
+  platformName: string;
+  title: string;
+  description: string;
+  shownotes: string;
+  tags: string[];
+  scheduledDate: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ExportOptions {
   includeScript: boolean;
   includeTimeline: boolean;
@@ -78,6 +116,7 @@ export interface ExportOptions {
   includeUnconfirmed: boolean;
   includeTimelineMarkers: boolean;
   includeChecklist: boolean;
+  includeRehearsalNotes: boolean;
 }
 
 export interface PodcastState {
@@ -87,6 +126,8 @@ export interface PodcastState {
   materials: Material[];
   exportTemplates: ExportTemplate[];
   checklistItems: ChecklistItem[];
+  rehearsalRecords: RehearsalRecord[];
+  publishVersions: PublishVersion[];
   activeTopicId: string | null;
 }
 
@@ -132,18 +173,36 @@ export const TEMPLATE_PRESETS: { name: string; description: string; exportType: 
     name: '访谈版',
     description: '适合嘉宾访谈节目，包含完整问题和时间轴',
     exportType: 'outline',
-    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: false }
+    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: false, includeRehearsalNotes: false }
   },
   {
     name: '单口版',
     description: '适合单人主播，侧重脚本和时间控制',
     exportType: 'outline',
-    options: { includeScript: true, includeTimeline: true, includeMaterials: false, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true }
+    options: { includeScript: true, includeTimeline: true, includeMaterials: false, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true, includeRehearsalNotes: true }
   },
   {
     name: '商业合作版',
     description: '适合品牌合作，突出广告时段和素材来源',
     exportType: 'outline',
-    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true }
+    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true, includeRehearsalNotes: false }
   },
+];
+
+export const PUBLISH_PLATFORMS: { value: PublishPlatform; label: string; icon: string; color: string }[] = [
+  { value: 'xiaoyuzhou', label: '小宇宙', icon: '🎧', color: 'bg-gradient-to-r from-rose-500 to-orange-500' },
+  { value: 'apple', label: 'Apple Podcasts', icon: '🍎', color: 'bg-gradient-to-r from-blue-500 to-purple-500' },
+  { value: 'wechat', label: '微信公众号', icon: '💬', color: 'bg-gradient-to-r from-emerald-500 to-teal-500' },
+  { value: 'spotify', label: 'Spotify', icon: '🎵', color: 'bg-gradient-to-r from-green-500 to-emerald-500' },
+  { value: 'bilibili', label: 'B站', icon: '📺', color: 'bg-gradient-to-r from-pink-500 to-rose-500' },
+  { value: 'youtube', label: 'YouTube', icon: '▶️', color: 'bg-gradient-to-r from-red-500 to-orange-500' },
+  { value: 'custom', label: '其他平台', icon: '🌐', color: 'bg-gradient-to-r from-slate-500 to-slate-600' },
+];
+
+export const REHEARSAL_ISSUE_TYPES: { value: RehearsalIssueType; label: string; icon: string; color: string }[] = [
+  { value: 'timing', label: '时长问题', icon: '⏱️', color: 'bg-amber-500' },
+  { value: 'content', label: '内容问题', icon: '📝', color: 'bg-indigo-500' },
+  { value: 'flow', label: '流程问题', icon: '🔄', color: 'bg-emerald-500' },
+  { value: 'technical', label: '技术问题', icon: '🔧', color: 'bg-rose-500' },
+  { value: 'other', label: '其他问题', icon: '❓', color: 'bg-slate-500' },
 ];

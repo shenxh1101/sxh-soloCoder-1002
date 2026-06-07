@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GripVertical, Trash2, Music, Mic, Edit3, Check, X, Plus, User, FileText } from 'lucide-react';
+import { GripVertical, Trash2, Music, Mic, Edit3, Check, X, Plus, User, FileText, AlertCircle } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '../ui/Button';
@@ -14,11 +14,12 @@ interface TimelineItemProps {
   item: TimelineItemType;
   totalDuration: number;
   onInsertAfter: () => void;
+  onAddRehearsalIssue: (item: TimelineItemType) => void;
   isFirst: boolean;
   isLast: boolean;
 }
 
-export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLast }: TimelineItemProps) {
+export function TimelineItem({ item, totalDuration, onInsertAfter, onAddRehearsalIssue, isFirst, isLast }: TimelineItemProps) {
   const updateTimelineItem = usePodcastStore((state) => state.updateTimelineItem);
   const deleteTimelineItem = usePodcastStore((state) => state.deleteTimelineItem);
 
@@ -230,6 +231,15 @@ export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLa
               title="标记口播"
             >
               <Mic size={14} />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+              onClick={() => onAddRehearsalIssue(item)}
+              title="添加排练问题"
+            >
+              <AlertCircle size={14} />
             </Button>
             <Button
               size="sm"

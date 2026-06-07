@@ -1,5 +1,5 @@
-import type { Topic, ScriptBlock, TimelineItem, Material, ChecklistItem } from '../types';
-import { SCRIPT_BLOCK_TYPES, TIMELINE_ITEM_TYPES, MATERIAL_TYPES } from '../types';
+import type { Topic, ScriptBlock, TimelineItem, Material, ChecklistItem, RehearsalRecord } from '../types';
+import { SCRIPT_BLOCK_TYPES, TIMELINE_ITEM_TYPES, MATERIAL_TYPES, REHEARSAL_ISSUE_TYPES } from '../types';
 
 export interface ExportOptions {
   includeScript: boolean;
@@ -8,11 +8,18 @@ export interface ExportOptions {
   includeUnconfirmed: boolean;
   includeTimelineMarkers: boolean;
   includeChecklist: boolean;
+  includeRehearsalNotes: boolean;
 }
 
 const formatDuration = (minutes: number): string => {
   const mins = Math.floor(minutes);
   const secs = Math.round((minutes - mins) * 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const formatTimePoint = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
@@ -32,6 +39,36 @@ const getMaterialTypeIcon = (type: string): string => {
   return MATERIAL_TYPES.find(t => t.value === type)?.icon || '📎';
 };
 
+const getIssueTypeIcon = (type: string): string => {
+  return REHEARSAL_ISSUE_TYPES.find(t => t.value === type)?.icon || '❓';
+};
+
+const getIssueTypeLabel = (type: string): string => {
+  return REHEARSAL_ISSUE_TYPES.find(t => t.value === type)?.label || type;
+};
+
+const renderTimelineWithMarkers = (items: TimelineItem[], options: ExportOptions): string => {
+  let result = '';
+  items.forEach((item, index) => {
+    result += `${index + 1}. [${formatDuration(item.startTime)} - ${formatDuration(item.startTime + item.duration)}] `;
+    result += `${getTimelineTypeLabel(item.type)}: ${item.title}`;
+    if (options.includeTimelineMarkers) {
+      if (item.marker === 'music') result += ' 🎵';
+      if (item.marker === 'voiceover') result += ' 🎙️';
+    }
+    result += ` (${formatDuration(item.duration)})\n`;
+    if (options.includeTimelineMarkers) {
+      if (item.assignee) {
+        result += `   👤 负责人: ${item.assignee}\n`;
+      }
+      if (item.note) {
+        result += `   📝 备注: ${item.note}\n`;
+      }
+    }
+  });
+  return result;
+};
+
 export const exportRecordingOutline = (
   topic: Topic,
   scriptBlocks: ScriptBlock[],
@@ -40,7 +77,8 @@ export const exportRecordingOutline = (
   checklistItems: ChecklistItem[],
   options: ExportOptions,
   titleFormat?: string,
-  footerText?: string
+  footerText?: string,
+  rehearsalRecord?: RehearsalRecord
 ): string => {
   const blocks = scriptBlocks
     .filter(b => b.topicId === topic.id)
@@ -82,24 +120,7 @@ export const exportRecordingOutline = (
     outline += `${'='.repeat(50)}\n`;
     outline += `🎬 时间轴\n`;
     outline += `${'='.repeat(50)}\n\n`;
-
-    items.forEach((item, index) => {
-      outline += `${index + 1}. [${formatDuration(item.startTime)} - ${formatDuration(item.startTime + item.duration)}] `;
-      outline += `${getTimelineTypeLabel(item.type)}: ${item.title}`;
-      if (options.includeTimelineMarkers) {
-        if (item.marker === 'music') outline += ' 🎵';
-        if (item.marker === 'voiceover') outline += ' 🎙️';
-      }
-      outline += ` (${formatDuration(item.duration)})\n`;
-      if (options.includeTimelineMarkers) {
-        if (item.assignee) {
-          outline += `   👤 负责人: ${item.assignee}\n`;
-        }
-        if (item.note) {
-          outline += `   📝 备注: ${item.note}\n`;
-        }
-      }
-    });
+    outline += renderTimelineWithMarkers(items, options);
     outline += '\n';
   }
 
@@ -150,12 +171,43 @@ export const exportRecordingOutline = (
     outline += '\n';
   }
 
+  if (options.includeRehearsalNotes && rehearsalRecord) {
+    outline += `${'='.repeat(50)}\n`;
+    outline += `🎯 最近排练记录\n`;
+    outline += `${'='.repeat(50)}\n\n`;
+
+    outline += `📅 排练日期: ${new Date(rehearsalRecord.date).toLocaleDateString('zh-CN')}\n`;
+    outline += `👥 参与人: ${rehearsalRecord.participants}\n`;
+    outline += `⏱️  实际时长: ${formatDuration(rehearsalRecord.actualDuration)}\n\n`;
+
+    if (rehearsalRecord.issues.length > 0) {
+      outline += `❗ 排练问题 (${rehearsalRecord.issues.filter(i => !i.resolved).length}/${rehearsalRecord.issues.length} 未解决):\n\n`;
+      rehearsalRecord.issues.forEach((issue, idx) => {
+        outline += `${idx + 1}. ${issue.resolved ? '[✓]' : '[ ]'} ${getIssueTypeIcon(issue.type)} ${getIssueTypeLabel(issue.type)}: ${issue.description}\n`;
+        if (issue.timelineItemTitle) {
+          outline += `   🎬 相关时段: ${issue.timelineItemTitle}`;
+          if (issue.timePoint !== undefined) {
+            outline += ` (${formatTimePoint(issue.timePoint)})`;
+          }
+          outline += '\n';
+        } else if (issue.timePoint !== undefined) {
+          outline += `   ⏱️  时间点: ${formatTimePoint(issue.timePoint)}\n`;
+        }
+      });
+      outline += '\n';
+    }
+
+    if (rehearsalRecord.notes) {
+      outline += `📝 改稿备注:\n${rehearsalRecord.notes}\n\n`;
+    }
+  }
+
   if (footerText) {
     outline += `${'='.repeat(50)}\n`;
     outline += `${footerText}\n`;
   }
 
-  if (!options.includeTimeline && !options.includeScript && !options.includeMaterials && !options.includeChecklist) {
+  if (!options.includeTimeline && !options.includeScript && !options.includeMaterials && !options.includeChecklist && !options.includeRehearsalNotes) {
     outline += '⚠️ 请在导出选项中选择要包含的内容\n';
   }
 
@@ -265,6 +317,7 @@ export const exportGuestQuestions = (
 export const exportPublishDescription = (
   topic: Topic,
   scriptBlocks: ScriptBlock[],
+  timelineItems: TimelineItem[],
   materials: Material[],
   options: ExportOptions,
   titleFormat?: string,
@@ -277,10 +330,20 @@ export const exportPublishDescription = (
   const todos = materials.filter(m => m.topicId === topic.id && m.type === 'todo');
   const filteredTodos = options.includeUnconfirmed ? todos : todos.filter(t => t.confirmed);
 
+  const items = timelineItems
+    .filter(t => t.topicId === topic.id)
+    .sort((a, b) => a.startTime - b.startTime);
+
+  const totalDuration = items.reduce((sum, item) => sum + item.duration, 0);
+
   const title = titleFormat?.replace('{title}', topic.title) || `🎙️ ${topic.title}`;
 
   let desc = `${title}\n`;
   desc += `${'='.repeat(50)}\n\n`;
+
+  if (options.includeTimeline && totalDuration > 0) {
+    desc += `⏱️  时长: ${formatDuration(totalDuration)}\n\n`;
+  }
 
   if (options.includeScript && openingBlock?.content) {
     desc += `${openingBlock.content}\n\n`;
@@ -298,6 +361,14 @@ export const exportPublishDescription = (
 
   if (topic.guest) {
     desc += `👤 嘉宾: ${topic.guest}\n\n`;
+  }
+
+  if (options.includeTimeline && items.length > 0) {
+    desc += `${'='.repeat(50)}\n`;
+    desc += `🎬 节目大纲\n`;
+    desc += `${'='.repeat(50)}\n\n`;
+    desc += renderTimelineWithMarkers(items, options);
+    desc += '\n';
   }
 
   if (options.includeMaterials && refs.length > 0) {
