@@ -7,6 +7,9 @@ export type ExportType = 'outline' | 'questions' | 'description';
 export type ChecklistItemType = 'empty-script' | 'unconfirmed-material' | 'timeline-duration' | 'ad-marker' | 'music-marker' | 'voiceover-marker' | 'custom';
 export type PublishPlatform = 'xiaoyuzhou' | 'apple' | 'wechat' | 'spotify' | 'bilibili' | 'youtube' | 'custom';
 export type RehearsalIssueType = 'timing' | 'content' | 'flow' | 'technical' | 'other';
+export type RehearsalResolution = 'fixed' | 'adjusted' | 'accepted' | 'deferred';
+export type RehearsalExportMode = 'latest' | 'all' | 'unresolved';
+export type PrePublishCheckItem = 'cover-ready' | 'description-reviewed' | 'shownotes-complete' | 'tags-set' | 'scheduled' | 'audio-quality' | 'intro-outro' | 'ad-placements';
 
 export interface Topic {
   id: string;
@@ -91,6 +94,9 @@ export interface RehearsalIssue {
   timelineItemTitle?: string;
   timePoint?: number;
   description: string;
+  assignee?: string;
+  resolution?: RehearsalResolution;
+  resolutionNotes?: string;
   resolved: boolean;
 }
 
@@ -104,6 +110,10 @@ export interface PublishVersion {
   shownotes: string;
   tags: string[];
   scheduledDate: string;
+  coverText: string;
+  socialPost: string;
+  promoLine: string;
+  prePublishChecklist: { item: PrePublishCheckItem; checked: boolean }[];
   notes: string;
   createdAt: string;
   updatedAt: string;
@@ -117,6 +127,7 @@ export interface ExportOptions {
   includeTimelineMarkers: boolean;
   includeChecklist: boolean;
   includeRehearsalNotes: boolean;
+  rehearsalExportMode: RehearsalExportMode;
 }
 
 export interface PodcastState {
@@ -173,20 +184,44 @@ export const TEMPLATE_PRESETS: { name: string; description: string; exportType: 
     name: '访谈版',
     description: '适合嘉宾访谈节目，包含完整问题和时间轴',
     exportType: 'outline',
-    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: false, includeRehearsalNotes: false }
+    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: false, includeRehearsalNotes: false, rehearsalExportMode: 'latest' }
   },
   {
     name: '单口版',
     description: '适合单人主播，侧重脚本和时间控制',
     exportType: 'outline',
-    options: { includeScript: true, includeTimeline: true, includeMaterials: false, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true, includeRehearsalNotes: true }
+    options: { includeScript: true, includeTimeline: true, includeMaterials: false, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true, includeRehearsalNotes: true, rehearsalExportMode: 'unresolved' }
   },
   {
     name: '商业合作版',
     description: '适合品牌合作，突出广告时段和素材来源',
     exportType: 'outline',
-    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true, includeRehearsalNotes: false }
+    options: { includeScript: true, includeTimeline: true, includeMaterials: true, includeUnconfirmed: false, includeTimelineMarkers: true, includeChecklist: true, includeRehearsalNotes: false, rehearsalExportMode: 'latest' }
   },
+];
+
+export const REHEARSAL_RESOLUTIONS: { value: RehearsalResolution; label: string; icon: string; color: string }[] = [
+  { value: 'fixed', label: '已修复', icon: '✅', color: 'bg-emerald-500' },
+  { value: 'adjusted', label: '已调整', icon: '🔄', color: 'bg-amber-500' },
+  { value: 'accepted', label: '已接受', icon: '👍', color: 'bg-blue-500' },
+  { value: 'deferred', label: '延后处理', icon: '⏳', color: 'bg-slate-500' },
+];
+
+export const REHEARSAL_EXPORT_MODES: { value: RehearsalExportMode; label: string; description: string }[] = [
+  { value: 'latest', label: '最近一次', description: '只导出最近一次排练的记录' },
+  { value: 'all', label: '全部排练', description: '导出所有排练的完整记录' },
+  { value: 'unresolved', label: '仅未解决', description: '只导出尚未解决的排练问题' },
+];
+
+export const PRE_PUBLISH_CHECK_ITEMS: { value: PrePublishCheckItem; label: string; description: string }[] = [
+  { value: 'cover-ready', label: '封面图就绪', description: '确认封面图已制作并符合平台规范' },
+  { value: 'description-reviewed', label: '简介已审核', description: '节目简介内容已审核通过' },
+  { value: 'shownotes-complete', label: 'Shownotes完整', description: 'Shownotes包含所有链接和时间点' },
+  { value: 'tags-set', label: '标签已设置', description: '平台标签和分类已正确设置' },
+  { value: 'scheduled', label: '发布时间已排期', description: '发布时间已确认并设置' },
+  { value: 'audio-quality', label: '音频质量检查', description: '音频文件音质、音量、噪音检查' },
+  { value: 'intro-outro', label: '片头片尾完整', description: '片头、片尾、过渡音乐已正确添加' },
+  { value: 'ad-placements', label: '广告位确认', description: '所有广告植入位置和内容已确认' },
 ];
 
 export const PUBLISH_PLATFORMS: { value: PublishPlatform; label: string; icon: string; color: string }[] = [

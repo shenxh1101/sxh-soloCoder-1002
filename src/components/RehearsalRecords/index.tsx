@@ -1,22 +1,33 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Edit3, Check, X, Calendar, Users, Clock, AlertCircle, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, Edit3, Check, X, Calendar, Users, Clock, AlertCircle, FileText, ChevronDown, ChevronUp, User, Tag } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Textarea } from '../ui/Textarea';
 import { TopicHeader } from '../TopicHeader';
 import { usePodcastStore } from '@/store/usePodcastStore';
-import type { RehearsalIssue, RehearsalIssueType } from '@/types';
-import { REHEARSAL_ISSUE_TYPES, TIMELINE_ITEM_TYPES } from '@/types';
+import type { RehearsalIssue, RehearsalIssueType, RehearsalResolution, TimelineItem } from '@/types';
+import { REHEARSAL_ISSUE_TYPES, REHEARSAL_RESOLUTIONS } from '@/types';
 import { cn } from '@/lib/utils';
 
-interface QuickAddIssueForm {
-  show: boolean;
+interface IssueFormData {
+  type: RehearsalIssueType;
   timelineItemId?: string;
   timelineItemTitle?: string;
   timePoint?: number;
-  type: RehearsalIssueType;
   description: string;
+  assignee?: string;
+  resolution?: RehearsalResolution;
+  resolutionNotes?: string;
+  resolved: boolean;
+}
+
+interface QuickAddIssueForm {
+  show: boolean;
+  recordId: string | null;
+  isEditing: boolean;
+  issueId?: string;
+  data: IssueFormData;
 }
 
 export function RehearsalRecords() {
@@ -32,9 +43,6 @@ export function RehearsalRecords() {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
-  const [editingIssueId, setEditingIssueId] = useState<string | null>(null);
-  const [editIssueDesc, setEditIssueDesc] = useState('');
 
   const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
   const [newParticipants, setNewParticipants] = useState('');
@@ -43,8 +51,13 @@ export function RehearsalRecords() {
 
   const [quickAddIssue, setQuickAddIssue] = useState<QuickAddIssueForm>({
     show: false,
-    type: 'content',
-    description: '',
+    recordId: null,
+    isEditing: false,
+    data: {
+      type: 'content',
+      description: '',
+      resolved: false,
+    },
   });
 
   const hasActiveTopic = !!activeTopicId;
@@ -84,47 +97,83 @@ export function RehearsalRecords() {
     setShowAddForm(false);
   };
 
-  const handleAddIssue = (recordId: string) => {
+  const handleOpenAddIssue = (recordId: string, prefillData?: Partial<IssueFormData>) => {
     setQuickAddIssue({
       show: true,
-      type: 'content',
-      description: '',
+      recordId,
+      isEditing: false,
+      data: {
+        type: 'content',
+        description: '',
+        resolved: false,
+        ...prefillData,
+      },
     });
     setExpandedRecordId(recordId);
   };
 
-  const handleQuickAddIssueSubmit = (recordId: string, e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickAddIssue.description.trim()) return;
-
-    addRehearsalIssue(recordId, {
-      type: quickAddIssue.type,
-      timelineItemId: quickAddIssue.timelineItemId,
-      timelineItemTitle: quickAddIssue.timelineItemTitle,
-      timePoint: quickAddIssue.timePoint,
-      description: quickAddIssue.description.trim(),
-      resolved: false,
+  const handleOpenEditIssue = (recordId: string, issue: RehearsalIssue) => {
+    setQuickAddIssue({
+      show: true,
+      recordId,
+      isEditing: true,
+      issueId: issue.id,
+      data: {
+        type: issue.type,
+        timelineItemId: issue.timelineItemId,
+        timelineItemTitle: issue.timelineItemTitle,
+        timePoint: issue.timePoint,
+        description: issue.description,
+        assignee: issue.assignee,
+        resolution: issue.resolution,
+        resolutionNotes: issue.resolutionNotes,
+        resolved: issue.resolved,
+      },
     });
-
-    setQuickAddIssue({ show: false, type: 'content', description: '' });
   };
 
-  const handleAddIssueFromTimeline = (timelineItem: typeof timelineItems[0]) => {
+  const handleCloseIssueForm = () => {
+    setQuickAddIssue({
+      show: false,
+      recordId: null,
+      isEditing: false,
+      data: {
+        type: 'content',
+        description: '',
+        resolved: false,
+      },
+    });
+  };
+
+  const handleIssueFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickAddIssue.recordId || !quickAddIssue.data.description.trim()) return;
+
+    if (quickAddIssue.isEditing && quickAddIssue.issueId) {
+      updateRehearsalIssue(quickAddIssue.recordId, quickAddIssue.issueId, {
+        ...quickAddIssue.data,
+      });
+    } else {
+      addRehearsalIssue(quickAddIssue.recordId, {
+        ...quickAddIssue.data,
+      });
+    }
+
+    handleCloseIssueForm();
+  };
+
+  const handleAddIssueFromTimeline = (timelineItem: TimelineItem) => {
     if (records.length === 0) {
       alert('请先创建一条排练记录');
       return;
     }
 
     const latestRecord = records[0];
-    setQuickAddIssue({
-      show: true,
+    handleOpenAddIssue(latestRecord.id, {
       timelineItemId: timelineItem.id,
       timelineItemTitle: timelineItem.title,
       timePoint: timelineItem.startTime * 60,
-      type: 'content',
-      description: '',
     });
-    setExpandedRecordId(latestRecord.id);
   };
 
   const formatDuration = (minutes: number) => {
@@ -149,6 +198,41 @@ export function RehearsalRecords() {
 
   const getIssueTypeColor = (type: string) => {
     return REHEARSAL_ISSUE_TYPES.find((t) => t.value === type)?.color || 'bg-slate-500';
+  };
+
+  const getResolutionLabel = (resolution?: string) => {
+    return REHEARSAL_RESOLUTIONS.find((r) => r.value === resolution)?.label || '';
+  };
+
+  const getResolutionIcon = (resolution?: string) => {
+    return REHEARSAL_RESOLUTIONS.find((r) => r.value === resolution)?.icon || '';
+  };
+
+  const handleTimelineSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const timelineItemId = e.target.value;
+    if (!timelineItemId) {
+      setQuickAddIssue((prev) => ({
+        ...prev,
+        data: {
+          ...prev.data,
+          timelineItemId: undefined,
+          timelineItemTitle: undefined,
+        },
+      }));
+      return;
+    }
+    const item = topicTimelineItems.find((t) => t.id === timelineItemId);
+    if (item) {
+      setQuickAddIssue((prev) => ({
+        ...prev,
+        data: {
+          ...prev.data,
+          timelineItemId: item.id,
+          timelineItemTitle: item.title,
+          timePoint: prev.data.timePoint ?? item.startTime * 60,
+        },
+      }));
+    }
   };
 
   return (
@@ -237,28 +321,24 @@ export function RehearsalRecords() {
             )}
 
             {quickAddIssue.show && (
-              <form onSubmit={(e) => {
-                if (expandedRecordId) handleQuickAddIssueSubmit(expandedRecordId, e);
-              }} className="bg-amber-500/10 rounded-xl p-4 border border-amber-500/30 animate-slide-down">
+              <form onSubmit={handleIssueFormSubmit} className="bg-amber-500/10 rounded-xl p-4 border border-amber-500/30 animate-slide-down">
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-amber-400">
-                    <AlertCircle size={16} />
-                    <span>添加排练问题</span>
-                  </div>
-                  {quickAddIssue.timelineItemTitle && (
-                    <div className="text-xs text-slate-400">
-                      关联时段: <span className="text-slate-300">{quickAddIssue.timelineItemTitle}</span>
-                      {quickAddIssue.timePoint !== undefined && (
-                        <span className="ml-2">({formatTimePoint(quickAddIssue.timePoint)})</span>
-                      )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-amber-400">
+                      <AlertCircle size={16} />
+                      <span>{quickAddIssue.isEditing ? '编辑排练问题' : '添加排练问题'}</span>
                     </div>
-                  )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-slate-400 mb-1">问题类型</label>
                       <select
-                        value={quickAddIssue.type}
-                        onChange={(e) => setQuickAddIssue((prev) => ({ ...prev, type: e.target.value as RehearsalIssueType }))}
+                        value={quickAddIssue.data.type}
+                        onChange={(e) => setQuickAddIssue((prev) => ({
+                          ...prev,
+                          data: { ...prev.data, type: e.target.value as RehearsalIssueType },
+                        }))}
                         className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                       >
                         {REHEARSAL_ISSUE_TYPES.map((t) => (
@@ -268,43 +348,137 @@ export function RehearsalRecords() {
                         ))}
                       </select>
                     </div>
-                    {quickAddIssue.timePoint !== undefined && (
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1">时间点(秒)</label>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1">关联时段</label>
+                      <select
+                        value={quickAddIssue.data.timelineItemId || ''}
+                        onChange={handleTimelineSelect}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                      >
+                        <option value="">-- 不关联 --</option>
+                        {topicTimelineItems.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.title} ({formatDuration(item.startTime)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1">卡住时间点(秒)</label>
+                      <Input
+                        type="number"
+                        value={quickAddIssue.data.timePoint ?? ''}
+                        onChange={(e) => setQuickAddIssue((prev) => ({
+                          ...prev,
+                          data: { ...prev.data, timePoint: parseFloat(e.target.value) || undefined },
+                        }))}
+                        placeholder="例如：125"
+                        inputSize="sm"
+                        min="0"
+                      />
+                      {quickAddIssue.data.timePoint !== undefined && (
+                        <div className="text-[10px] text-slate-500 mt-1">
+                          对应时间: {formatTimePoint(quickAddIssue.data.timePoint)}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1">责任人</label>
+                      <div className="relative">
+                        <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                         <Input
-                          type="number"
-                          value={quickAddIssue.timePoint}
-                          onChange={(e) => setQuickAddIssue((prev) => ({ ...prev, timePoint: parseFloat(e.target.value) || 0 }))}
+                          value={quickAddIssue.data.assignee || ''}
+                          onChange={(e) => setQuickAddIssue((prev) => ({
+                            ...prev,
+                            data: { ...prev.data, assignee: e.target.value.trim() || undefined },
+                          }))}
+                          placeholder="负责人姓名"
                           inputSize="sm"
+                          className="pl-8"
                         />
                       </div>
-                    )}
+                    </div>
                   </div>
+
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">问题描述</label>
                     <Textarea
-                      value={quickAddIssue.description}
-                      onChange={(e) => setQuickAddIssue((prev) => ({ ...prev, description: e.target.value }))}
+                      value={quickAddIssue.data.description}
+                      onChange={(e) => setQuickAddIssue((prev) => ({
+                        ...prev,
+                        data: { ...prev.data, description: e.target.value },
+                      }))}
                       placeholder="描述具体问题..."
                       rows={2}
                       autoFocus
                     />
                   </div>
+
+                  {quickAddIssue.isEditing && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 mb-1">处理结果</label>
+                          <select
+                            value={quickAddIssue.data.resolved && quickAddIssue.data.resolution ? quickAddIssue.data.resolution : ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setQuickAddIssue((prev) => ({
+                                ...prev,
+                                data: {
+                                  ...prev.data,
+                                  resolution: value as RehearsalResolution || undefined,
+                                  resolved: !!value,
+                                },
+                              }));
+                            }}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                          >
+                            <option value="">-- 未解决 --</option>
+                            {REHEARSAL_RESOLUTIONS.map((r) => (
+                              <option key={r.value} value={r.value}>
+                                {r.icon} {r.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {quickAddIssue.data.resolved && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 mb-1">处理备注</label>
+                          <Textarea
+                            value={quickAddIssue.data.resolutionNotes || ''}
+                            onChange={(e) => setQuickAddIssue((prev) => ({
+                              ...prev,
+                              data: { ...prev.data, resolutionNotes: e.target.value.trim() || undefined },
+                            }))}
+                            placeholder="说明如何处理的..."
+                            rows={2}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
-                      onClick={() => setQuickAddIssue({ show: false, type: 'content', description: '' })}
+                      onClick={handleCloseIssueForm}
                     >
                       取消
                     </Button>
                     <Button
                       type="submit"
                       size="sm"
-                      disabled={!quickAddIssue.description.trim()}
+                      disabled={!quickAddIssue.data.description.trim()}
                     >
-                      添加问题
+                      {quickAddIssue.isEditing ? '保存修改' : '添加问题'}
                     </Button>
                   </div>
                 </div>
@@ -321,7 +495,6 @@ export function RehearsalRecords() {
               <div className="space-y-3">
                 {records.map((record, recordIndex) => {
                   const isExpanded = expandedRecordId === record.id;
-                  const isEditing = editingRecordId === record.id;
                   const unresolvedCount = record.issues.filter((i) => !i.resolved).length;
 
                   return (
@@ -377,7 +550,7 @@ export function RehearsalRecords() {
                             className="h-8 w-8 p-0"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleAddIssue(record.id);
+                              handleOpenAddIssue(record.id);
                             }}
                             title="添加问题"
                           >
@@ -412,97 +585,77 @@ export function RehearsalRecords() {
                                 <div
                                   key={issue.id}
                                   className={cn(
-                                    'p-3 rounded-lg border transition-all duration-200',
+                                    'p-3 rounded-lg border transition-all duration-200 group',
                                     issue.resolved
                                       ? 'bg-emerald-900/20 border-emerald-800/30'
                                       : 'bg-slate-800/50 border-slate-700/50'
                                   )}
                                 >
-                                  {editingIssueId === issue.id ? (
-                                    <div className="space-y-2">
-                                      <Textarea
-                                        value={editIssueDesc}
-                                        onChange={(e) => setEditIssueDesc(e.target.value)}
-                                        rows={2}
-                                        autoFocus
-                                      />
-                                      <div className="flex justify-end gap-2">
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => setEditingIssueId(null)}
-                                        >
-                                          <X size={14} className="mr-1" />
-                                          取消
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          onClick={() => {
-                                            if (editIssueDesc.trim()) {
-                                              updateRehearsalIssue(record.id, issue.id, {
-                                                description: editIssueDesc.trim(),
-                                              });
-                                            }
-                                            setEditingIssueId(null);
-                                          }}
-                                        >
-                                          <Check size={14} className="mr-1" />
-                                          保存
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-start gap-3">
-                                      <button
-                                        onClick={() => toggleRehearsalIssueResolved(record.id, issue.id)}
-                                        className={cn(
-                                          'mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 flex-shrink-0',
-                                          issue.resolved
-                                            ? 'bg-emerald-500 border-emerald-500 text-white'
-                                            : 'border-slate-500 hover:border-emerald-400'
-                                        )}
-                                      >
-                                        {issue.resolved && <Check size={12} />}
-                                      </button>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className={cn(
-                                            'text-xs px-2 py-0.5 rounded-full flex items-center gap-1',
-                                            getIssueTypeColor(issue.type),
-                                            'text-white/90'
-                                          )}>
-                                            {getIssueTypeIcon(issue.type)}
-                                            {getIssueTypeLabel(issue.type)}
-                                          </span>
-                                          {issue.timelineItemTitle && (
-                                            <span className="text-xs text-slate-500">
-                                              🎬 {issue.timelineItemTitle}
-                                              {issue.timePoint !== undefined && (
-                                                <span className="ml-1">({formatTimePoint(issue.timePoint)})</span>
-                                              )}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <p className={cn(
-                                          'text-sm mt-1',
-                                          issue.resolved ? 'text-slate-500 line-through' : 'text-slate-300'
+                                  <div className="flex items-start gap-3">
+                                    <button
+                                      onClick={() => toggleRehearsalIssueResolved(record.id, issue.id)}
+                                      className={cn(
+                                        'mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 flex-shrink-0',
+                                        issue.resolved
+                                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                                          : 'border-slate-500 hover:border-emerald-400'
+                                      )}
+                                    >
+                                      {issue.resolved && <Check size={12} />}
+                                    </button>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className={cn(
+                                          'text-xs px-2 py-0.5 rounded-full flex items-center gap-1',
+                                          getIssueTypeColor(issue.type),
+                                          'text-white/90'
                                         )}>
-                                          {issue.description}
-                                        </p>
+                                          {getIssueTypeIcon(issue.type)}
+                                          {getIssueTypeLabel(issue.type)}
+                                        </span>
+                                        {issue.timelineItemTitle && (
+                                          <span className="text-xs text-slate-500">
+                                            🎬 {issue.timelineItemTitle}
+                                            {issue.timePoint !== undefined && (
+                                              <span className="ml-1">({formatTimePoint(issue.timePoint)})</span>
+                                            )}
+                                          </span>
+                                        )}
+                                        {issue.assignee && (
+                                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                                            <User size={10} />
+                                            {issue.assignee}
+                                          </span>
+                                        )}
+                                        {issue.resolved && issue.resolution && (
+                                          <span className="text-xs text-emerald-400 flex items-center gap-1">
+                                            {getResolutionIcon(issue.resolution)}
+                                            {getResolutionLabel(issue.resolution)}
+                                          </span>
+                                        )}
                                       </div>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        onClick={() => {
-                                          setEditingIssueId(issue.id);
-                                          setEditIssueDesc(issue.description);
-                                        }}
-                                      >
-                                        <Edit3 size={12} />
-                                      </Button>
+                                      <p className={cn(
+                                        'text-sm mt-1',
+                                        issue.resolved ? 'text-slate-500 line-through' : 'text-slate-300'
+                                      )}>
+                                        {issue.description}
+                                      </p>
+                                      {issue.resolved && issue.resolutionNotes && (
+                                        <p className="text-xs text-emerald-400/70 mt-1">
+                                          💡 {issue.resolutionNotes}
+                                        </p>
+                                      )}
                                     </div>
-                                  )}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      onClick={() => handleOpenEditIssue(record.id, issue)}
+                                      title="编辑问题"
+                                    >
+                                      <Edit3 size={12} />
+                                    </Button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -547,5 +700,28 @@ export function RehearsalRecords() {
 }
 
 export function useRehearsalQuickAdd() {
-  return { handleAddIssueFromTimeline: (item: any) => {} };
+  const records = usePodcastStore((state) =>
+    state.activeTopicId ? state.getRehearsalRecordsForTopic(state.activeTopicId) : []
+  );
+  const addRehearsalIssue = usePodcastStore((state) => state.addRehearsalIssue);
+
+  const handleAddIssueFromTimeline = (timelineItem: TimelineItem) => {
+    if (records.length === 0) {
+      alert('请先在「排练记录」中创建一条排练记录');
+      return;
+    }
+    const latestRecord = records[0];
+    const description = prompt(`请输入「${timelineItem.title}」的排练问题：`);
+    if (!description?.trim()) return;
+    addRehearsalIssue(latestRecord.id, {
+      type: 'content',
+      timelineItemId: timelineItem.id,
+      timelineItemTitle: timelineItem.title,
+      timePoint: timelineItem.startTime * 60,
+      description: description.trim(),
+      resolved: false,
+    });
+  };
+
+  return { handleAddIssueFromTimeline };
 }

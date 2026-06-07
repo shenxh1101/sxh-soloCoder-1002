@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Edit3, Check, X, Calendar, Tag, FileText, Globe, ChevronDown, ChevronUp, Copy } from 'lucide-react';
+import { Plus, Trash2, Edit3, Check, X, Calendar, Tag, FileText, Globe, ChevronDown, ChevronUp, Copy, Image, Megaphone, Mic2, ListChecks } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -7,9 +7,17 @@ import { Textarea } from '../ui/Textarea';
 import { TopicHeader } from '../TopicHeader';
 import { usePodcastStore } from '@/store/usePodcastStore';
 import { copyToClipboard } from '@/utils/export';
-import type { PublishPlatform } from '@/types';
-import { PUBLISH_PLATFORMS } from '@/types';
+import type { PublishPlatform, PrePublishCheckItem } from '@/types';
+import { PUBLISH_PLATFORMS, PRE_PUBLISH_CHECK_ITEMS } from '@/types';
 import { cn } from '@/lib/utils';
+
+type EditTabType = 'basic' | 'promo' | 'checklist';
+
+const getInitialPrePublishChecklist = () =>
+  PRE_PUBLISH_CHECK_ITEMS.map((item) => ({
+    item: item.value as PrePublishCheckItem,
+    checked: false,
+  }));
 
 export function PublishVersions() {
   const activeTopicId = usePodcastStore((state) => state.activeTopicId);
@@ -17,17 +25,24 @@ export function PublishVersions() {
   const addPublishVersion = usePodcastStore((state) => state.addPublishVersion);
   const updatePublishVersion = usePodcastStore((state) => state.updatePublishVersion);
   const deletePublishVersion = usePodcastStore((state) => state.deletePublishVersion);
+  const copyPublishVersion = usePodcastStore((state) => state.copyPublishVersion);
+  const togglePrePublishCheck = usePodcastStore((state) => state.togglePrePublishCheck);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTab, setEditTab] = useState<EditTabType>('basic');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copyDialogId, setCopyDialogId] = useState<string | null>(null);
 
   const [newPlatform, setNewPlatform] = useState<PublishPlatform>('xiaoyuzhou');
   const [newPlatformName, setNewPlatformName] = useState('小宇宙');
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newShownotes, setNewShownotes] = useState('');
+  const [newCoverText, setNewCoverText] = useState('');
+  const [newSocialPost, setNewSocialPost] = useState('');
+  const [newPromoLine, setNewPromoLine] = useState('');
   const [newTags, setNewTags] = useState('');
   const [newScheduledDate, setNewScheduledDate] = useState('');
   const [newNotes, setNewNotes] = useState('');
@@ -53,8 +68,12 @@ export function PublishVersions() {
       title: newTitle.trim(),
       description: newDescription.trim(),
       shownotes: newShownotes.trim(),
+      coverText: newCoverText.trim(),
+      socialPost: newSocialPost.trim(),
+      promoLine: newPromoLine.trim(),
       tags: newTags.split(',').map((t) => t.trim()).filter(Boolean),
       scheduledDate: newScheduledDate,
+      prePublishChecklist: getInitialPrePublishChecklist(),
       notes: newNotes.trim(),
     });
 
@@ -63,6 +82,9 @@ export function PublishVersions() {
     setNewTitle('');
     setNewDescription('');
     setNewShownotes('');
+    setNewCoverText('');
+    setNewSocialPost('');
+    setNewPromoLine('');
     setNewTags('');
     setNewScheduledDate('');
     setNewNotes('');
@@ -77,6 +99,11 @@ export function PublishVersions() {
     }
   };
 
+  const handleCopyVersion = (sourceId: string, targetPlatform: PublishPlatform) => {
+    copyPublishVersion(sourceId, targetPlatform);
+    setCopyDialogId(null);
+  };
+
   const getPlatformIcon = (platform: string) => {
     return PUBLISH_PLATFORMS.find((p) => p.value === platform)?.icon || '🌐';
   };
@@ -85,100 +112,274 @@ export function PublishVersions() {
     return PUBLISH_PLATFORMS.find((p) => p.value === platform)?.color || 'bg-slate-500';
   };
 
+  const getChecklistProgress = (checklist: { item: PrePublishCheckItem; checked: boolean }[]) => {
+    const checked = checklist.filter((c) => c.checked).length;
+    return { checked, total: checklist.length, percent: checklist.length > 0 ? (checked / checklist.length) * 100 : 0 };
+  };
+
   const handleCopyContent = async (version: typeof versions[0]) => {
-    const content = `${version.title}\n\n${version.description}\n\n${version.shownotes ? '---\n\n' + version.shownotes + '\n\n' : ''}标签: ${version.tags.map((t) => '#' + t).join(' ')}`;
-    const success = await copyToClipboard(content);
+    const lines = [];
+    lines.push(version.title);
+    if (version.coverText) lines.push('\n【封面文案】\n' + version.coverText);
+    lines.push('\n【节目简介】\n' + version.description);
+    if (version.shownotes) lines.push('\n【Shownotes】\n' + version.shownotes);
+    if (version.promoLine) lines.push('\n【口播推广语】\n' + version.promoLine);
+    if (version.socialPost) lines.push('\n【社媒短帖】\n' + version.socialPost);
+    if (version.tags.length > 0) lines.push('\n【标签】\n' + version.tags.map((t) => '#' + t).join(' '));
+    if (version.notes) lines.push('\n【备注】\n' + version.notes);
+
+    const success = await copyToClipboard(lines.join('\n'));
     if (success) {
       setCopiedId(version.id);
       setTimeout(() => setCopiedId(null), 2000);
     }
   };
 
-  const renderEditForm = (version: typeof versions[0]) => (
-    <div className="space-y-3 animate-slide-down">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">平台</label>
-          <select
-            value={version.platform}
-            disabled
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-400"
+  const resetAddForm = () => {
+    setShowAddForm(false);
+    setNewPlatform('xiaoyuzhou');
+    setNewPlatformName('小宇宙');
+    setNewTitle('');
+    setNewDescription('');
+    setNewShownotes('');
+    setNewCoverText('');
+    setNewSocialPost('');
+    setNewPromoLine('');
+    setNewTags('');
+    setNewScheduledDate('');
+    setNewNotes('');
+  };
+
+  const renderEditForm = (version: typeof versions[0]) => {
+    const tabs: { id: EditTabType; label: string; icon: React.ReactNode }[] = [
+      { id: 'basic', label: '基本信息', icon: <FileText size={14} /> },
+      { id: 'promo', label: '推广素材', icon: <Megaphone size={14} /> },
+      { id: 'checklist', label: '发布检查', icon: <ListChecks size={14} /> },
+    ];
+
+    return (
+      <div className="space-y-3 animate-slide-down">
+        <div className="flex gap-2 border-b border-slate-700/50 pb-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setEditTab(tab.id)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                editTab === tab.id
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/30'
+              )}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {editTab === 'basic' && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">平台</label>
+                <select
+                  value={version.platform}
+                  disabled
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-400"
+                >
+                  {PUBLISH_PLATFORMS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.icon} {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">计划发布时间</label>
+                <Input
+                  type="datetime-local"
+                  value={version.scheduledDate}
+                  onChange={(e) => updatePublishVersion(version.id, { scheduledDate: e.target.value })}
+                  inputSize="sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">标题</label>
+              <Input
+                value={version.title}
+                onChange={(e) => updatePublishVersion(version.id, { title: e.target.value })}
+                inputSize="sm"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">简介</label>
+              <Textarea
+                value={version.description}
+                onChange={(e) => updatePublishVersion(version.id, { description: e.target.value })}
+                rows={4}
+                placeholder="吸引人的节目简介..."
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Shownotes</label>
+              <Textarea
+                value={version.shownotes}
+                onChange={(e) => updatePublishVersion(version.id, { shownotes: e.target.value })}
+                rows={4}
+                placeholder="详细的时间节点和参考链接..."
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">标签（用逗号分隔）</label>
+              <Input
+                value={version.tags.join(', ')}
+                onChange={(e) => updatePublishVersion(version.id, {
+                  tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean)
+                })}
+                placeholder="AI, 创作, 科技"
+                inputSize="sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">备注</label>
+              <Textarea
+                value={version.notes}
+                onChange={(e) => updatePublishVersion(version.id, { notes: e.target.value })}
+                rows={2}
+                placeholder="平台特定要求、注意事项..."
+              />
+            </div>
+          </div>
+        )}
+
+        {editTab === 'promo' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                <span className="flex items-center gap-1">
+                  <Image size={12} />
+                  封面文案
+                </span>
+              </label>
+              <Textarea
+                value={version.coverText}
+                onChange={(e) => updatePublishVersion(version.id, { coverText: e.target.value })}
+                rows={2}
+                placeholder="封面图上的宣传文案，简短有力..."
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                <span className="flex items-center gap-1">
+                  <Mic2 size={12} />
+                  口播推广语
+                </span>
+              </label>
+              <Textarea
+                value={version.promoLine}
+                onChange={(e) => updatePublishVersion(version.id, { promoLine: e.target.value })}
+                rows={2}
+                placeholder="节目中主播口播的推广内容..."
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                <span className="flex items-center gap-1">
+                  <Megaphone size={12} />
+                  社媒短帖
+                </span>
+              </label>
+              <Textarea
+                value={version.socialPost}
+                onChange={(e) => updatePublishVersion(version.id, { socialPost: e.target.value })}
+                rows={4}
+                placeholder="适合微博、小红书等平台的推广文案..."
+              />
+            </div>
+          </div>
+        )}
+
+        {editTab === 'checklist' && (
+          <div className="space-y-2">
+            {PRE_PUBLISH_CHECK_ITEMS.map((checkItem) => {
+              const status = version.prePublishChecklist.find((c) => c.item === checkItem.value);
+              return (
+                <label
+                  key={checkItem.value}
+                  className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-700/30 cursor-pointer transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={status?.checked || false}
+                    onChange={() => togglePrePublishCheck(version.id, checkItem.value)}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-0"
+                  />
+                  <div>
+                    <div className="text-sm text-slate-200">{checkItem.label}</div>
+                    <div className="text-xs text-slate-500">{checkItem.description}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setEditingId(null);
+              setEditTab('basic');
+            }}
           >
-            {PUBLISH_PLATFORMS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.icon} {p.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">计划发布时间</label>
-          <Input
-            type="datetime-local"
-            value={version.scheduledDate}
-            onChange={(e) => updatePublishVersion(version.id, { scheduledDate: e.target.value })}
-            inputSize="sm"
-          />
+            完成编辑
+          </Button>
         </div>
       </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1">标题</label>
-        <Input
-          value={version.title}
-          onChange={(e) => updatePublishVersion(version.id, { title: e.target.value })}
-          inputSize="sm"
-          autoFocus
-        />
+    );
+  };
+
+  const renderCopyDialog = (sourceVersion: typeof versions[0]) => {
+    const usedPlatforms = versions.map((v) => v.platform);
+    const availablePlatforms = PUBLISH_PLATFORMS.filter((p) => !usedPlatforms.includes(p.value));
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setCopyDialogId(null)}>
+        <div className="bg-slate-800 rounded-xl p-4 w-80 border border-slate-700" onClick={(e) => e.stopPropagation()}>
+          <h4 className="text-sm font-medium text-slate-200 mb-3">复制到其他平台</h4>
+          <p className="text-xs text-slate-400 mb-3">
+            从「{sourceVersion.platformName}」复制内容到：
+          </p>
+          {availablePlatforms.length === 0 ? (
+            <p className="text-xs text-slate-500 text-center py-4">所有平台都已有版本</p>
+          ) : (
+            <div className="space-y-2">
+              {availablePlatforms.map((platform) => (
+                <button
+                  key={platform.value}
+                  onClick={() => handleCopyVersion(sourceVersion.id, platform.value)}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-700/50 text-left text-sm text-slate-300 transition-colors"
+                >
+                  <span className={cn('w-8 h-8 rounded flex items-center justify-center', platform.color)}>
+                    {platform.icon}
+                  </span>
+                  {platform.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end mt-4">
+            <Button size="sm" variant="ghost" onClick={() => setCopyDialogId(null)}>
+              取消
+            </Button>
+          </div>
+        </div>
       </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1">简介</label>
-        <Textarea
-          value={version.description}
-          onChange={(e) => updatePublishVersion(version.id, { description: e.target.value })}
-          rows={4}
-          placeholder="吸引人的节目简介..."
-        />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1">Shownotes</label>
-        <Textarea
-          value={version.shownotes}
-          onChange={(e) => updatePublishVersion(version.id, { shownotes: e.target.value })}
-          rows={4}
-          placeholder="详细的时间节点和参考链接..."
-        />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1">标签（用逗号分隔）</label>
-        <Input
-          value={version.tags.join(', ')}
-          onChange={(e) => updatePublishVersion(version.id, {
-            tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean)
-          })}
-          placeholder="AI, 创作, 科技"
-          inputSize="sm"
-        />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1">备注</label>
-        <Textarea
-          value={version.notes}
-          onChange={(e) => updatePublishVersion(version.id, { notes: e.target.value })}
-          rows={2}
-          placeholder="平台特定要求、注意事项..."
-        />
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setEditingId(null)}
-        >
-          完成编辑
-        </Button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <Card className="h-full flex flex-col overflow-hidden animate-fade-in" style={{ animationDelay: '400ms' }}>
@@ -256,8 +457,52 @@ export function PublishVersions() {
                     <Textarea
                       value={newDescription}
                       onChange={(e) => setNewDescription(e.target.value)}
-                      rows={3}
+                      rows={2}
                       placeholder="节目简介，吸引听众点击..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1">
+                        <span className="flex items-center gap-1">
+                          <Image size={10} />
+                          封面文案
+                        </span>
+                      </label>
+                      <Input
+                        value={newCoverText}
+                        onChange={(e) => setNewCoverText(e.target.value)}
+                        placeholder="封面宣传语..."
+                        inputSize="sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1">
+                        <span className="flex items-center gap-1">
+                          <Mic2 size={10} />
+                          口播推广语
+                        </span>
+                      </label>
+                      <Input
+                        value={newPromoLine}
+                        onChange={(e) => setNewPromoLine(e.target.value)}
+                        placeholder="主播口播推广..."
+                        inputSize="sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">
+                      <span className="flex items-center gap-1">
+                        <Megaphone size={10} />
+                        社媒短帖
+                      </span>
+                    </label>
+                    <Textarea
+                      value={newSocialPost}
+                      onChange={(e) => setNewSocialPost(e.target.value)}
+                      rows={2}
+                      placeholder="社交媒体推广文案..."
                     />
                   </div>
                   <div>
@@ -265,7 +510,7 @@ export function PublishVersions() {
                     <Textarea
                       value={newShownotes}
                       onChange={(e) => setNewShownotes(e.target.value)}
-                      rows={3}
+                      rows={2}
                       placeholder="时间节点、参考链接等详细信息..."
                     />
                   </div>
@@ -308,17 +553,7 @@ export function PublishVersions() {
                       type="button"
                       size="sm"
                       variant="ghost"
-                      onClick={() => {
-                        setShowAddForm(false);
-                        setNewPlatform('xiaoyuzhou');
-                        setNewPlatformName('小宇宙');
-                        setNewTitle('');
-                        setNewDescription('');
-                        setNewShownotes('');
-                        setNewTags('');
-                        setNewScheduledDate('');
-                        setNewNotes('');
-                      }}
+                      onClick={resetAddForm}
                     >
                       取消
                     </Button>
@@ -345,6 +580,7 @@ export function PublishVersions() {
                 {versions.map((version) => {
                   const isExpanded = expandedId === version.id;
                   const isEditing = editingId === version.id;
+                  const progress = getChecklistProgress(version.prePublishChecklist);
 
                   return (
                     <div
@@ -368,8 +604,23 @@ export function PublishVersions() {
                             {getPlatformIcon(version.platform)}
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-slate-200">
-                              {version.platformName}
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-200">
+                                {version.platformName}
+                              </span>
+                              {progress.total > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-amber-500 transition-all duration-300"
+                                      style={{ width: `${progress.percent}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-slate-400">
+                                    {progress.checked}/{progress.total}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                             <div className="text-xs text-slate-500 mt-0.5">
                               {version.scheduledDate
@@ -385,6 +636,18 @@ export function PublishVersions() {
                             className="h-8 w-8 p-0"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setCopyDialogId(version.id);
+                            }}
+                            title="复制到其他平台"
+                          >
+                            <Copy size={14} />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
                               handleCopyContent(version);
                             }}
                             title="复制内容"
@@ -392,7 +655,7 @@ export function PublishVersions() {
                             {copiedId === version.id ? (
                               <Check size={14} className="text-emerald-400" />
                             ) : (
-                              <Copy size={14} />
+                              <FileText size={14} />
                             )}
                           </Button>
                           {isExpanded ? (
@@ -425,6 +688,38 @@ export function PublishVersions() {
                                 <p className="text-sm text-slate-300 whitespace-pre-wrap">{version.description}</p>
                               </div>
 
+                              {version.coverText && (
+                                <div>
+                                  <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                                    <Image size={12} />
+                                    封面文案
+                                  </div>
+                                  <p className="text-sm text-slate-300">{version.coverText}</p>
+                                </div>
+                              )}
+
+                              {version.promoLine && (
+                                <div>
+                                  <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                                    <Mic2 size={12} />
+                                    口播推广语
+                                  </div>
+                                  <p className="text-sm text-amber-400/90 italic">"{version.promoLine}"</p>
+                                </div>
+                              )}
+
+                              {version.socialPost && (
+                                <div>
+                                  <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                                    <Megaphone size={12} />
+                                    社媒短帖
+                                  </div>
+                                  <div className="p-3 bg-slate-800/50 rounded-lg">
+                                    <p className="text-sm text-slate-300 whitespace-pre-wrap">{version.socialPost}</p>
+                                  </div>
+                                </div>
+                              )}
+
                               {version.shownotes && (
                                 <div>
                                   <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
@@ -450,6 +745,35 @@ export function PublishVersions() {
                                         #{tag}
                                       </span>
                                     ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {progress.total > 0 && (
+                                <div>
+                                  <div className="flex items-center gap-2 text-xs text-slate-400 mb-2">
+                                    <ListChecks size={12} />
+                                    发布前检查
+                                    <span className="text-emerald-400">
+                                      {progress.checked}/{progress.total} 已完成
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-1">
+                                    {version.prePublishChecklist.map((check) => {
+                                      const itemInfo = PRE_PUBLISH_CHECK_ITEMS.find((i) => i.value === check.item);
+                                      return (
+                                        <div
+                                          key={check.item}
+                                          className={cn(
+                                            'flex items-center gap-2 text-xs p-1.5 rounded',
+                                            check.checked ? 'text-emerald-400' : 'text-slate-500'
+                                          )}
+                                        >
+                                          {check.checked ? <Check size={12} /> : <div className="w-3 h-3 border border-current rounded" />}
+                                          {itemInfo?.label}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -491,6 +815,7 @@ export function PublishVersions() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setEditingId(isEditing ? null : version.id);
+                                      setEditTab('basic');
                                     }}
                                   >
                                     <Edit3 size={14} className="mr-1" />
@@ -509,6 +834,9 @@ export function PublishVersions() {
             )}
           </div>
         )}
+
+        {copyDialogId && versions.find((v) => v.id === copyDialogId) &&
+          renderCopyDialog(versions.find((v) => v.id === copyDialogId)!)}
       </CardContent>
     </Card>
   );

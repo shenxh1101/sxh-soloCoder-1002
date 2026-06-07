@@ -3,10 +3,12 @@ import { persist } from 'zustand/middleware';
 import type {
   Topic, ScriptBlock, TimelineItem, Material, TopicStatus, ScriptBlockType, Priority,
   ExportTemplate, ChecklistItem, ExportType, ChecklistItemType,
-  RehearsalRecord, PublishVersion, RehearsalIssue, PublishPlatform
+  RehearsalRecord, PublishVersion, RehearsalIssue, PublishPlatform,
+  PrePublishCheckItem, RehearsalExportMode, PRE_PUBLISH_CHECK_ITEMS, PUBLISH_PLATFORMS
 } from '../types';
 import { exportRecordingOutline, exportGuestQuestions, exportPublishDescription, type ExportOptions, generateChecklistItems } from '../utils/export';
 import type { MaterialType, TimelineItemType } from '../types';
+import { PRE_PUBLISH_CHECK_ITEMS as PRE_PUBLISH_CHECK_ITEMS_CONST, PUBLISH_PLATFORMS as PUBLISH_PLATFORMS_CONST } from '../types';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
@@ -83,7 +85,11 @@ interface PodcastStore {
   addPublishVersion: (version: Omit<PublishVersion, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updatePublishVersion: (id: string, updates: Partial<PublishVersion>) => void;
   deletePublishVersion: (id: string) => void;
+  copyPublishVersion: (id: string, newPlatform: PublishPlatform) => void;
   getPublishVersionsForTopic: (topicId: string) => PublishVersion[];
+  togglePrePublishCheck: (versionId: string, item: PrePublishCheckItem) => void;
+
+  getRehearsalRecordsForExport: (topicId: string, mode: RehearsalExportMode) => RehearsalRecord[];
 
   getActiveTopic: () => Topic | undefined;
 
@@ -170,6 +176,7 @@ export const usePodcastStore = create<PodcastStore>()(
             includeTimelineMarkers: true,
             includeChecklist: false,
             includeRehearsalNotes: false,
+            rehearsalExportMode: 'latest',
           },
           titleFormat: '📻 录制提纲 - {title}',
           footerText: '--- 由播客规划工具生成 ---',
@@ -189,6 +196,7 @@ export const usePodcastStore = create<PodcastStore>()(
             includeTimelineMarkers: true,
             includeChecklist: true,
             includeRehearsalNotes: true,
+            rehearsalExportMode: 'latest',
           },
           titleFormat: '🎙️ 主播录制指南 - {title}',
           footerText: '--- 祝录制顺利！---',
@@ -565,6 +573,25 @@ export const usePodcastStore = create<PodcastStore>()(
         return records[0];
       },
 
+      getRehearsalRecordsForExport: (topicId, mode) => {
+        const state = get();
+        const records = state.rehearsalRecords
+          .filter((r) => r.topicId === topicId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        if (mode === 'latest') {
+          return records.length > 0 ? [records[0]] : [];
+        } else if (mode === 'unresolved') {
+          return records
+            .map((r) => ({
+              ...r,
+              issues: r.issues.filter((i) => !i.resolved),
+            }))
+            .filter((r) => r.issues.length > 0);
+        }
+        return records;
+      },
+
       addRehearsalIssue: (recordId, issue) =>
         set((state) => ({
           rehearsalRecords: state.rehearsalRecords.map((r) =>
@@ -629,6 +656,39 @@ export const usePodcastStore = create<PodcastStore>()(
           publishVersions: state.publishVersions.filter((p) => p.id !== id),
         })),
 
+      copyPublishVersion: (id, newPlatform) =>
+        set((state) => {
+          const source = state.publishVersions.find((p) => p.id === id);
+          if (!source) return state;
+          const platformInfo = PUBLISH_PLATFORMS_CONST.find((p) => p.value === newPlatform);
+          const newVersion: PublishVersion = {
+            ...source,
+            id: generateId(),
+            platform: newPlatform,
+            platformName: platformInfo?.label || '其他平台',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          return {
+            publishVersions: [...state.publishVersions, newVersion],
+          };
+        }),
+
+      togglePrePublishCheck: (versionId, item) =>
+        set((state) => ({
+          publishVersions: state.publishVersions.map((p) =>
+            p.id === versionId
+              ? {
+                  ...p,
+                  updatedAt: new Date().toISOString(),
+                  prePublishChecklist: p.prePublishChecklist.map((c) =>
+                    c.item === item ? { ...c, checked: !c.checked } : c
+                  ),
+                }
+              : p
+          ),
+        })),
+
       getPublishVersionsForTopic: (topicId) => {
         const state = get();
         return state.publishVersions
@@ -654,20 +714,22 @@ export const usePodcastStore = create<PodcastStore>()(
           includeTimelineMarkers: true,
           includeChecklist: false,
           includeRehearsalNotes: false,
+          rehearsalExportMode: 'latest',
         };
-        const rehearsalRecord = options?.includeRehearsalNotes
-          ? state.getLatestRehearsalRecord(topic.id)
-          : undefined;
+        const finalOptions = options || defaultOptions;
+        const rehearsalRecords = finalOptions.includeRehearsalNotes
+          ? state.getRehearsalRecordsForExport(topic.id, finalOptions.rehearsalExportMode)
+          : [];
         return exportRecordingOutline(
           topic,
           state.scriptBlocks,
           state.timelineItems,
           state.materials,
           state.checklistItems,
-          options || defaultOptions,
+          finalOptions,
           titleFormat,
           footerText,
-          rehearsalRecord
+          rehearsalRecords
         );
       },
 
@@ -683,10 +745,12 @@ export const usePodcastStore = create<PodcastStore>()(
           includeTimelineMarkers: true,
           includeChecklist: false,
           includeRehearsalNotes: false,
+          rehearsalExportMode: 'latest',
         };
         return exportGuestQuestions(
           topic,
           state.scriptBlocks,
+          state.timelineItems,
           state.materials,
           state.checklistItems,
           options || defaultOptions,
@@ -707,6 +771,7 @@ export const usePodcastStore = create<PodcastStore>()(
           includeTimelineMarkers: true,
           includeChecklist: false,
           includeRehearsalNotes: false,
+          rehearsalExportMode: 'latest',
         };
         return exportPublishDescription(
           topic,

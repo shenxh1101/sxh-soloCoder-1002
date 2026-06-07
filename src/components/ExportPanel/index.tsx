@@ -6,8 +6,8 @@ import { Input } from '../ui/Input';
 import { TopicHeader } from '../TopicHeader';
 import { usePodcastStore } from '@/store/usePodcastStore';
 import { copyToClipboard } from '@/utils/export';
-import type { ExportType, ExportOptions } from '@/types';
-import { EXPORT_TYPES, TEMPLATE_PRESETS } from '@/types';
+import type { ExportType, ExportOptions, RehearsalExportMode } from '@/types';
+import { EXPORT_TYPES, TEMPLATE_PRESETS, REHEARSAL_EXPORT_MODES } from '@/types';
 import { cn } from '@/lib/utils';
 
 const defaultOptions: ExportOptions = {
@@ -17,6 +17,8 @@ const defaultOptions: ExportOptions = {
   includeUnconfirmed: false,
   includeTimelineMarkers: true,
   includeChecklist: false,
+  includeRehearsalNotes: false,
+  rehearsalExportMode: 'latest',
 };
 
 export function ExportPanel() {
@@ -207,7 +209,7 @@ export function ExportPanel() {
     { key: 'includeUnconfirmed' as const, label: '包含待确认事项', description: '显示未确认的待办和素材' },
     { key: 'includeTimelineMarkers' as const, label: '包含时间轴标记', description: '显示负责人、备注、音乐/口播标记' },
     { key: 'includeChecklist' as const, label: '包含检查清单', description: '显示准备检查清单内容' },
-    { key: 'includeRehearsalNotes' as const, label: '包含排练记录', description: '显示最近一次排练记录和问题' },
+    { key: 'includeRehearsalNotes' as const, label: '包含排练记录', description: '显示排练记录和问题' },
   ];
 
   return (
@@ -349,21 +351,48 @@ export function ExportPanel() {
                         <div className="px-4 pb-4 space-y-3">
                           <div className="space-y-2">
                             {optionItems.map((item) => (
-                              <label
-                                key={item.key}
-                                className="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-700/20 cursor-pointer transition-colors"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={options[item.key]}
-                                  onChange={() => toggleOption(item.key)}
-                                  className="mt-0.5 w-4 h-4 rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-0"
-                                />
-                                <div>
-                                  <div className="text-sm text-slate-200">{item.label}</div>
-                                  <div className="text-xs text-slate-500">{item.description}</div>
-                                </div>
-                              </label>
+                              <div key={item.key}>
+                                <label
+                                  className="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-700/20 cursor-pointer transition-colors"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={options[item.key]}
+                                    onChange={() => toggleOption(item.key)}
+                                    className="mt-0.5 w-4 h-4 rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-0"
+                                  />
+                                  <div>
+                                    <div className="text-sm text-slate-200">{item.label}</div>
+                                    <div className="text-xs text-slate-500">{item.description}</div>
+                                  </div>
+                                </label>
+                                {item.key === 'includeRehearsalNotes' && options.includeRehearsalNotes && (
+                                  <div className="ml-7 mt-1 mb-2">
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">
+                                      排练导出范围
+                                    </label>
+                                    <div className="flex gap-2">
+                                      {REHEARSAL_EXPORT_MODES.map((mode) => (
+                                        <button
+                                          key={mode.value}
+                                          onClick={() => {
+                                            setOptions((prev) => ({ ...prev, rehearsalExportMode: mode.value as RehearsalExportMode }));
+                                            setSelectedTemplateId(null);
+                                          }}
+                                          className={cn(
+                                            'px-3 py-1 text-xs rounded-lg transition-colors',
+                                            options.rehearsalExportMode === mode.value
+                                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                              : 'bg-slate-700/30 text-slate-400 border border-transparent hover:bg-slate-700/50'
+                                          )}
+                                        >
+                                          {mode.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             ))}
                           </div>
 
