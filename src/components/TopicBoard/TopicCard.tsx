@@ -139,7 +139,7 @@ export function TopicCard({ topic }: TopicCardProps) {
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={handleAddTag}
             placeholder="输入标签后按回车"
-            size="sm"
+            inputSize="sm"
           />
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={handleCancel}>

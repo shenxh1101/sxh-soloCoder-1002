@@ -1,6 +1,13 @@
 import type { Topic, ScriptBlock, TimelineItem, Material } from '../types';
 import { SCRIPT_BLOCK_TYPES, TIMELINE_ITEM_TYPES } from '../types';
 
+export interface ExportOptions {
+  includeScript: boolean;
+  includeTimeline: boolean;
+  includeMaterials: boolean;
+  includeUnconfirmed: boolean;
+}
+
 const formatDuration = (minutes: number): string => {
   const mins = Math.floor(minutes);
   const secs = Math.round((minutes - mins) * 60);
@@ -18,7 +25,8 @@ const getTimelineTypeLabel = (type: string): string => {
 export const exportRecordingOutline = (
   topic: Topic,
   scriptBlocks: ScriptBlock[],
-  timelineItems: TimelineItem[]
+  timelineItems: TimelineItem[],
+  options: ExportOptions
 ): string => {
   const blocks = scriptBlocks
     .filter(b => b.topicId === topic.id)
@@ -35,40 +43,53 @@ export const exportRecordingOutline = (
   outline += `📅 创建日期: ${new Date(topic.createdAt).toLocaleDateString('zh-CN')}\n`;
   outline += `👤 嘉宾: ${topic.guest || '无'}\n`;
   outline += `🏷️  标签: ${topic.tags.join(', ') || '无'}\n`;
-  outline += `⏱️  预估总时长: ${formatDuration(totalDuration)}\n\n`;
+  if (options.includeTimeline && totalDuration > 0) {
+    outline += `⏱️  预估总时长: ${formatDuration(totalDuration)}\n`;
+  }
+  outline += '\n';
 
   if (topic.description) {
     outline += `📝 主题描述:\n${topic.description}\n\n`;
   }
 
-  outline += `${'='.repeat(50)}\n`;
-  outline += `🎬 时间轴\n`;
-  outline += `${'='.repeat(50)}\n\n`;
+  if (options.includeTimeline && items.length > 0) {
+    outline += `${'='.repeat(50)}\n`;
+    outline += `🎬 时间轴\n`;
+    outline += `${'='.repeat(50)}\n\n`;
 
-  items.forEach((item, index) => {
-    outline += `${index + 1}. [${formatDuration(item.startTime)} - ${formatDuration(item.startTime + item.duration)}] `;
-    outline += `${getTimelineTypeLabel(item.type)}: ${item.title}`;
-    if (item.marker === 'music') outline += ' 🎵';
-    if (item.marker === 'voiceover') outline += ' 🎙️';
-    outline += ` (${formatDuration(item.duration)})\n`;
-  });
+    items.forEach((item, index) => {
+      outline += `${index + 1}. [${formatDuration(item.startTime)} - ${formatDuration(item.startTime + item.duration)}] `;
+      outline += `${getTimelineTypeLabel(item.type)}: ${item.title}`;
+      if (item.marker === 'music') outline += ' 🎵';
+      if (item.marker === 'voiceover') outline += ' 🎙️';
+      outline += ` (${formatDuration(item.duration)})\n`;
+    });
+    outline += '\n';
+  }
 
-  outline += `\n${'='.repeat(50)}\n`;
-  outline += `📄 脚本内容\n`;
-  outline += `${'='.repeat(50)}\n\n`;
+  if (options.includeScript && blocks.length > 0) {
+    outline += `${'='.repeat(50)}\n`;
+    outline += `📄 脚本内容\n`;
+    outline += `${'='.repeat(50)}\n\n`;
 
-  blocks.forEach(block => {
-    outline += `【${getScriptBlockLabel(block.type)}】${block.title}\n`;
-    outline += `${'-'.repeat(40)}\n`;
-    outline += block.content || '(暂无内容)\n\n';
-  });
+    blocks.forEach(block => {
+      outline += `【${getScriptBlockLabel(block.type)}】${block.title}\n`;
+      outline += `${'-'.repeat(40)}\n`;
+      outline += block.content || '(暂无内容)\n\n';
+    });
+  }
+
+  if (!options.includeTimeline && !options.includeScript) {
+    outline += '⚠️ 请在导出选项中选择要包含的内容\n';
+  }
 
   return outline;
 };
 
 export const exportGuestQuestions = (
   topic: Topic,
-  scriptBlocks: ScriptBlock[]
+  scriptBlocks: ScriptBlock[],
+  options: ExportOptions
 ): string => {
   const questionBlocks = scriptBlocks
     .filter(b => b.topicId === topic.id && b.type === 'question')
@@ -83,13 +104,11 @@ export const exportGuestQuestions = (
     doc += `📝 本期主题:\n${topic.description}\n\n`;
   }
 
-  doc += `${'='.repeat(50)}\n`;
-  doc += `💬 访谈问题\n`;
-  doc += `${'='.repeat(50)}\n\n`;
+  if (options.includeScript && questionBlocks.length > 0) {
+    doc += `${'='.repeat(50)}\n`;
+    doc += `💬 访谈问题\n`;
+    doc += `${'='.repeat(50)}\n\n`;
 
-  if (questionBlocks.length === 0) {
-    doc += '暂无问题，请先在脚本编辑中添加问题模块。\n';
-  } else {
     questionBlocks.forEach((block, index) => {
       doc += `Q${index + 1}: ${block.title}\n\n`;
       if (block.content) {
@@ -99,7 +118,7 @@ export const exportGuestQuestions = (
     });
   }
 
-  doc += `\n${'='.repeat(50)}\n`;
+  doc += `${'='.repeat(50)}\n`;
   doc += `📌 注意事项\n`;
   doc += `${'='.repeat(50)}\n\n`;
   doc += `1. 请嘉宾提前熟悉以上问题\n`;
@@ -107,29 +126,36 @@ export const exportGuestQuestions = (
   doc += `3. 访谈过程中请保持自然流畅\n`;
   doc += `4. 如有补充问题可随时沟通\n`;
 
+  if (options.includeScript && questionBlocks.length === 0) {
+    doc += '\n⚠️ 暂无问题，请先在脚本编辑中添加问题模块。\n';
+  }
+
   return doc;
 };
 
 export const exportPublishDescription = (
   topic: Topic,
   scriptBlocks: ScriptBlock[],
-  materials: Material[]
+  materials: Material[],
+  options: ExportOptions
 ): string => {
   const openingBlock = scriptBlocks.find(b => b.topicId === topic.id && b.type === 'opening');
   const closingBlock = scriptBlocks.find(b => b.topicId === topic.id && b.type === 'closing');
   const questionBlocks = scriptBlocks.filter(b => b.topicId === topic.id && b.type === 'question');
   const refs = materials.filter(m => m.topicId === topic.id && m.type === 'reference');
+  const todos = materials.filter(m => m.topicId === topic.id && m.type === 'todo');
+  const filteredTodos = options.includeUnconfirmed ? todos : todos.filter(t => t.confirmed);
 
   let desc = `🎙️ ${topic.title}\n`;
   desc += `${'='.repeat(50)}\n\n`;
 
-  if (openingBlock?.content) {
+  if (options.includeScript && openingBlock?.content) {
     desc += `${openingBlock.content}\n\n`;
   } else if (topic.description) {
     desc += `${topic.description}\n\n`;
   }
 
-  if (questionBlocks.length > 0) {
+  if (options.includeScript && questionBlocks.length > 0) {
     desc += `📋 本期要点:\n`;
     questionBlocks.forEach((q, i) => {
       desc += `${i + 1}. ${q.title}\n`;
@@ -141,17 +167,28 @@ export const exportPublishDescription = (
     desc += `👤 嘉宾: ${topic.guest}\n\n`;
   }
 
-  if (refs.length > 0) {
+  if (options.includeMaterials && refs.length > 0) {
     desc += `📚 引用来源:\n`;
     refs.forEach((ref, i) => {
       desc += `${i + 1}. ${ref.title}`;
       if (ref.url) desc += ` - ${ref.url}`;
+      if (ref.note) desc += ` (${ref.note})`;
       desc += '\n';
     });
     desc += '\n';
   }
 
-  if (closingBlock?.content) {
+  if (options.includeUnconfirmed && filteredTodos.length > 0) {
+    desc += `✅ 待办事项:\n`;
+    filteredTodos.forEach((todo, i) => {
+      desc += `${i + 1}. ${todo.title}`;
+      if (todo.note) desc += ` - ${todo.note}`;
+      desc += todo.confirmed ? ' ✓\n' : ' ⏳\n';
+    });
+    desc += '\n';
+  }
+
+  if (options.includeScript && closingBlock?.content) {
     desc += `\n💭 ${closingBlock.content}\n\n`;
   }
 

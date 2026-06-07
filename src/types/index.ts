@@ -66,10 +66,10 @@ export const TIMELINE_ITEM_TYPES: { value: TimelineItemType; label: string; colo
   { value: 'ad', label: '广告', color: 'bg-amber-500' },
 ];
 
-export const MATERIAL_TYPES: { value: MaterialType; label: string; icon: string }[] = [
-  { value: 'link', label: '链接', icon: 'Link' },
-  { value: 'reference', label: '引用', icon: 'Quote' },
-  { value: 'todo', label: '待办', icon: 'CheckSquare' },
+export const MATERIAL_TYPES: { value: MaterialType; label: string; icon: string; color: string }[] = [
+  { value: 'link', label: '链接', icon: '🔗', color: 'bg-indigo-500' },
+  { value: 'reference', label: '引用', icon: '📖', color: 'bg-emerald-500' },
+  { value: 'todo', label: '待办', icon: '✅', color: 'bg-amber-500' },
 ];
 
 export const PRIORITY_LEVELS: { value: Priority; label: string; color: string }[] = [

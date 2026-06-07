@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
   Topic, ScriptBlock, TimelineItem, Material, TopicStatus, ScriptBlockType, Priority } from '../types';
-import { exportRecordingOutline, exportGuestQuestions, exportPublishDescription } from '../utils/export';
+import { exportRecordingOutline, exportGuestQuestions, exportPublishDescription, type ExportOptions } from '../utils/export';
 import type { MaterialType, TimelineItemType } from '../types';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -43,6 +43,8 @@ interface PodcastStore {
   addTimelineItem: (item: Omit<TimelineItem, 'id'>) => void;
   updateTimelineItem: (id: string, updates: Partial<TimelineItem>) => void;
   deleteTimelineItem: (id: string) => void;
+  recalculateTimeline: (topicId: string, items: TimelineItem[]) => void;
+  insertTimelineItem: (afterId: string, item: Omit<TimelineItem, 'id'>) => void;
 
   addMaterial: (material: Omit<Material, 'id'>) => void;
   updateMaterial: (id: string, updates: Partial<Material>) => void;
@@ -51,9 +53,9 @@ interface PodcastStore {
 
   getActiveTopic: () => Topic | undefined;
 
-  exportRecordingOutline: () => string;
-  exportGuestQuestions: () => string;
-  exportPublishDescription: () => string;
+  exportRecordingOutline: (options?: ExportOptions) => string;
+  exportGuestQuestions: (options?: ExportOptions) => string;
+  exportPublishDescription: (options?: ExportOptions) => string;
 }
 
 export const usePodcastStore = create<PodcastStore>()(
@@ -203,16 +205,111 @@ export const usePodcastStore = create<PodcastStore>()(
         }),
 
       updateTimelineItem: (id, updates) =>
-        set((state) => ({
-          timelineItems: state.timelineItems.map((i) =>
-            i.id === id ? { ...i, ...updates } : i
-          ),
-        })),
+        set((state) => {
+          const item = state.timelineItems.find((i) => i.id === id);
+          if (!item) return state;
+
+          const topicId = item.topicId;
+          const allItems = [...state.timelineItems];
+          const topicItems = allItems
+            .filter((i) => i.topicId === topicId)
+            .sort((a, b) => a.startTime - b.startTime);
+
+          const itemIndex = topicItems.findIndex((i) => i.id === id);
+          if (itemIndex === -1) return state;
+
+          const updatedItem = { ...topicItems[itemIndex], ...updates };
+          topicItems[itemIndex] = updatedItem;
+
+          if ('duration' in updates && updates.duration !== undefined) {
+            let currentTime = topicItems[0].startTime;
+            for (let i = 0; i < topicItems.length; i++) {
+              topicItems[i] = { ...topicItems[i], startTime: currentTime };
+              currentTime += topicItems[i].duration;
+            }
+          }
+
+          const otherItems = allItems.filter((i) => i.topicId !== topicId);
+          return {
+            timelineItems: [...otherItems, ...topicItems],
+          };
+        }),
 
       deleteTimelineItem: (id) =>
-        set((state) => ({
-          timelineItems: state.timelineItems.filter((i) => i.id !== id),
-        })),
+        set((state) => {
+          const item = state.timelineItems.find((i) => i.id === id);
+          if (!item) return state;
+
+          const topicId = item.topicId;
+          const remainingItems = state.timelineItems.filter((i) => i.id !== id);
+          const topicItems = remainingItems
+            .filter((i) => i.topicId === topicId)
+            .sort((a, b) => a.startTime - b.startTime);
+
+          let currentTime = 0;
+          for (let i = 0; i < topicItems.length; i++) {
+            topicItems[i] = { ...topicItems[i], startTime: currentTime };
+            currentTime += topicItems[i].duration;
+          }
+
+          const otherItems = remainingItems.filter((i) => i.topicId !== topicId);
+          return {
+            timelineItems: [...otherItems, ...topicItems],
+          };
+        }),
+
+      recalculateTimeline: (topicId, items) =>
+        set((state) => {
+          const sortedItems = [...items].sort((a, b) => {
+            const aIndex = items.findIndex((i) => i.id === a.id);
+            const bIndex = items.findIndex((i) => i.id === b.id);
+            return aIndex - bIndex;
+          });
+
+          let currentTime = 0;
+          for (let i = 0; i < sortedItems.length; i++) {
+            sortedItems[i] = { ...sortedItems[i], startTime: currentTime };
+            currentTime += sortedItems[i].duration;
+          }
+
+          const otherItems = state.timelineItems.filter((i) => i.topicId !== topicId);
+          return {
+            timelineItems: [...otherItems, ...sortedItems],
+          };
+        }),
+
+      insertTimelineItem: (afterId, item) =>
+        set((state) => {
+          const afterItem = state.timelineItems.find((i) => i.id === afterId);
+          if (!afterItem) return state;
+
+          const topicId = afterItem.topicId;
+          const allItems = [...state.timelineItems];
+          const topicItems = allItems
+            .filter((i) => i.topicId === topicId)
+            .sort((a, b) => a.startTime - b.startTime);
+
+          const insertIndex = topicItems.findIndex((i) => i.id === afterId) + 1;
+          const newItem = {
+            ...item,
+            id: generateId(),
+            topicId,
+            startTime: 0,
+          };
+
+          topicItems.splice(insertIndex, 0, newItem);
+
+          let currentTime = 0;
+          for (let i = 0; i < topicItems.length; i++) {
+            topicItems[i] = { ...topicItems[i], startTime: currentTime };
+            currentTime += topicItems[i].duration;
+          }
+
+          const otherItems = allItems.filter((i) => i.topicId !== topicId);
+          return {
+            timelineItems: [...otherItems, ...topicItems],
+          };
+        }),
 
       addMaterial: (material) =>
         set((state) => {
@@ -250,25 +347,43 @@ export const usePodcastStore = create<PodcastStore>()(
         return state.topics.find((t) => t.id === state.activeTopicId);
       },
 
-      exportRecordingOutline: () => {
+      exportRecordingOutline: (options) => {
         const state = get();
         const topic = state.getActiveTopic();
         if (!topic) return '请先选择一个选题';
-        return exportRecordingOutline(topic, state.scriptBlocks, state.timelineItems);
+        const defaultOptions: ExportOptions = {
+          includeScript: true,
+          includeTimeline: true,
+          includeMaterials: true,
+          includeUnconfirmed: false,
+        };
+        return exportRecordingOutline(topic, state.scriptBlocks, state.timelineItems, options || defaultOptions);
       },
 
-      exportGuestQuestions: () => {
+      exportGuestQuestions: (options) => {
         const state = get();
         const topic = state.getActiveTopic();
         if (!topic) return '请先选择一个选题';
-        return exportGuestQuestions(topic, state.scriptBlocks);
+        const defaultOptions: ExportOptions = {
+          includeScript: true,
+          includeTimeline: true,
+          includeMaterials: true,
+          includeUnconfirmed: false,
+        };
+        return exportGuestQuestions(topic, state.scriptBlocks, options || defaultOptions);
       },
 
-      exportPublishDescription: () => {
+      exportPublishDescription: (options) => {
         const state = get();
         const topic = state.getActiveTopic();
         if (!topic) return '请先选择一个选题';
-        return exportPublishDescription(topic, state.scriptBlocks, state.materials);
+        const defaultOptions: ExportOptions = {
+          includeScript: true,
+          includeTimeline: true,
+          includeMaterials: true,
+          includeUnconfirmed: false,
+        };
+        return exportPublishDescription(topic, state.scriptBlocks, state.materials, options || defaultOptions);
       },
     }),
     {

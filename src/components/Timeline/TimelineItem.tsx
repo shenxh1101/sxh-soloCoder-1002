@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { GripVertical, Trash2, Music, Mic, Edit3, Check, X } from 'lucide-react';
+import { GripVertical, Trash2, Music, Mic, Edit3, Check, X, Plus } from 'lucide-react';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { usePodcastStore } from '@/store/usePodcastStore';
@@ -10,11 +12,28 @@ import { cn } from '@/lib/utils';
 interface TimelineItemProps {
   item: TimelineItemType;
   totalDuration: number;
+  onInsertAfter: () => void;
+  isFirst: boolean;
+  isLast: boolean;
 }
 
-export function TimelineItem({ item, totalDuration }: TimelineItemProps) {
+export function TimelineItem({ item, totalDuration, onInsertAfter, isFirst, isLast }: TimelineItemProps) {
   const updateTimelineItem = usePodcastStore((state) => state.updateTimelineItem);
   const deleteTimelineItem = usePodcastStore((state) => state.deleteTimelineItem);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(item.title);
@@ -56,15 +75,23 @@ export function TimelineItem({ item, totalDuration }: TimelineItemProps) {
     updateTimelineItem(item.id, { type: e.target.value as ItemType });
   };
 
+  const handleDelete = () => {
+    deleteTimelineItem(item.id);
+  };
+
   if (isEditing) {
     return (
-      <div className="bg-slate-700/80 rounded-lg p-3 border-2 border-amber-500/50">
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="bg-slate-700/80 rounded-lg p-3 border-2 border-amber-500/50"
+      >
         <div className="space-y-2">
           <Input
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
             placeholder="时段标题"
-            size="sm"
+            inputSize="sm"
             autoFocus
           />
           <div className="flex gap-2">
@@ -72,7 +99,7 @@ export function TimelineItem({ item, totalDuration }: TimelineItemProps) {
               value={editDuration}
               onChange={(e) => setEditDuration(e.target.value)}
               placeholder="时长(分钟)"
-              size="sm"
+              inputSize="sm"
               type="number"
               step="0.5"
               min="0.1"
@@ -91,8 +118,12 @@ export function TimelineItem({ item, totalDuration }: TimelineItemProps) {
 
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       className={cn(
-        'rounded-lg border border-slate-700/50 bg-slate-800/50 overflow-hidden group transition-all duration-200 hover:border-slate-600'
+        'rounded-lg border border-slate-700/50 bg-slate-800/50 overflow-hidden group transition-all duration-200 hover:border-slate-600',
+        isDragging && 'opacity-50 shadow-xl',
+        !isDragging && 'hover:shadow-md'
       )}
     >
       <div
@@ -104,7 +135,11 @@ export function TimelineItem({ item, totalDuration }: TimelineItemProps) {
       />
       <div className="p-3">
         <div className="flex items-center gap-2">
-          <div className="text-slate-500 cursor-grab active:cursor-grabbing p-1 -ml-1 hover:text-slate-300 transition-colors">
+          <div
+            {...attributes}
+            {...listeners}
+            className="text-slate-500 cursor-grab active:cursor-grabbing p-1 -ml-1 hover:text-slate-300 transition-colors"
+          >
             <GripVertical size={16} />
           </div>
 
@@ -126,11 +161,20 @@ export function TimelineItem({ item, totalDuration }: TimelineItemProps) {
             {formatTime(item.startTime)} - {formatTime(item.startTime + item.duration)}
           </span>
 
-          <span className="text-xs text-amber-400 font-mono">
+          <span className="text-xs text-amber-400 font-mono font-semibold">
             {formatTime(item.duration)}
           </span>
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0"
+              onClick={onInsertAfter}
+              title="在此之后插入"
+            >
+              <Plus size={14} />
+            </Button>
             <Button
               size="sm"
               variant="ghost"
@@ -167,7 +211,7 @@ export function TimelineItem({ item, totalDuration }: TimelineItemProps) {
               size="sm"
               variant="ghost"
               className="h-7 w-7 p-0 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
-              onClick={() => deleteTimelineItem(item.id)}
+              onClick={handleDelete}
             >
               <Trash2 size={14} />
             </Button>

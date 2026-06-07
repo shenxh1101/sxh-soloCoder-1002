@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 
 interface TagProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info';
+  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'outline';
   size?: 'sm' | 'md';
   removable?: boolean;
   onRemove?: () => void;
@@ -22,6 +22,7 @@ export const Tag = React.forwardRef<HTMLSpanElement, TagProps>(
           variant === 'warning' && 'bg-amber-900/50 text-amber-300 border border-amber-700/50',
           variant === 'danger' && 'bg-rose-900/50 text-rose-300 border border-rose-700/50',
           variant === 'info' && 'bg-indigo-900/50 text-indigo-300 border border-indigo-700/50',
+          variant === 'outline' && 'bg-transparent text-slate-400 border border-slate-600/50',
           className
         )}
         {...props}

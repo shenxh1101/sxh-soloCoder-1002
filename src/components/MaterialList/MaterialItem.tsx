@@ -63,14 +63,14 @@ export function MaterialItem({ material }: MaterialItemProps) {
           value={editTitle}
           onChange={(e) => setEditTitle(e.target.value)}
           placeholder="素材标题"
-          size="sm"
+          inputSize="sm"
           autoFocus
         />
         <Input
           value={editUrl}
           onChange={(e) => setEditUrl(e.target.value)}
           placeholder="链接地址(可选)"
-          size="sm"
+          inputSize="sm"
         />
         <Textarea
           value={editNote}

@@ -23,10 +23,27 @@ export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const activeTopic = usePodcastStore((state) => state.getActiveTopic());
 
+  const renderActiveModule = () => {
+    switch (activeTab) {
+      case 'topics':
+        return <TopicBoard />;
+      case 'script':
+        return <ScriptEditor />;
+      case 'timeline':
+        return <Timeline />;
+      case 'materials':
+        return <MaterialList />;
+      case 'export':
+        return <ExportPanel />;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-animated">
-      <header className="sticky top-0 z-50 border-b border-slate-800/50 bg-slate-900/80 backdrop-blur-xl">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
+    <div className="min-h-screen bg-animated flex flex-col">
+      <header className="sticky top-0 z-50 border-b border-slate-800/50 bg-slate-900/80 backdrop-blur-xl flex-shrink-0">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 w-full">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
@@ -41,9 +58,9 @@ export default function Home() {
             </div>
 
             {activeTopic && (
-              <div className="hidden lg:flex items-center gap-2 bg-slate-800/50 px-4 py-2 rounded-full border border-slate-700/50">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <span className="text-sm text-slate-300 max-w-[200px] truncate">
+              <div className="hidden md:flex items-center gap-2 bg-slate-800/50 px-4 py-2 rounded-full border border-slate-700/50 max-w-[300px]">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+                <span className="text-sm text-slate-300 truncate">
                   {activeTopic.title}
                 </span>
               </div>
@@ -85,66 +102,35 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6">
-        <div className="hidden lg:flex gap-2 mb-6 overflow-x-auto pb-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap',
-                activeTab === tab.id
-                  ? 'bg-amber-500 text-slate-900 shadow-lg shadow-amber-500/25'
-                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 border border-slate-700/50'
-              )}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-6">
-          <div className={cn(
-            'h-[calc(100vh-180px)]',
-            activeTab !== 'topics' && 'hidden lg:block'
-          )}>
-            {activeTab === 'topics' && <TopicBoard />}
+      <main className="flex-1 flex flex-col min-h-0">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 w-full flex-1 flex flex-col min-h-0">
+          <div className="hidden lg:flex gap-2 mb-6 overflow-x-auto pb-2 flex-shrink-0">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap',
+                  activeTab === tab.id
+                    ? 'bg-amber-500 text-slate-900 shadow-lg shadow-amber-500/25'
+                    : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 border border-slate-700/50'
+                )}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className={cn(
-              'h-[calc(100vh-180px)]',
-              activeTab !== 'script' && 'hidden lg:block'
-            )}>
-              {activeTab === 'script' && <ScriptEditor />}
-            </div>
-
-            <div className={cn(
-              'h-[calc(100vh-180px)]',
-              activeTab !== 'timeline' && 'hidden lg:block'
-            )}>
-              {activeTab === 'timeline' && <Timeline />}
-            </div>
-
-            <div className={cn(
-              'h-[calc(100vh-180px)]',
-              activeTab !== 'materials' && 'hidden lg:block'
-            )}>
-              {activeTab === 'materials' && <MaterialList />}
-            </div>
-
-            <div className={cn(
-              'h-[calc(100vh-180px)]',
-              activeTab !== 'export' && 'hidden lg:block'
-            )}>
-              {activeTab === 'export' && <ExportPanel />}
+          <div className="flex-1 min-h-0">
+            <div key={activeTab} className="h-full animate-fade-in">
+              {renderActiveModule()}
             </div>
           </div>
         </div>
       </main>
 
-      <footer className="border-t border-slate-800/50 mt-8">
+      <footer className="border-t border-slate-800/50 flex-shrink-0">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4">
           <p className="text-center text-xs text-slate-600">
             所有数据保存在本地浏览器中 · 无需登录即可使用
